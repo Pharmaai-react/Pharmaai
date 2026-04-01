@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- ── SEO & Social ─────────────────────────────────────────────── -->
+    <title>PharmaAI — Smart Pharmacy Inventory System</title>
+    <meta name="description" content="PharmaAI is a smart pharmacy inventory management system with AI-powered demand predictions, drug interaction checking, barcode scanning, and POS capabilities." />
+    <meta name="theme-color" content="#0d9488" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://pharmaai.app/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type"        content="website" />
+    <meta property="og:title"       content="PharmaAI — Smart Pharmacy Inventory System" />
+    <meta property="og:description" content="AI-powered pharmacy inventory management with drug interaction checking, POS, and real-time stock alerts." />
+    <meta property="og:site_name"   content="PharmaAI" />
+
+    <!-- ── Favicon ──────────────────────────────────────────────────── -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230d9488'/><text y='.9em' font-size='80' x='10'>💊</text></svg>" />
+
+    <!-- ── Fonts (preconnect for speed) ─────────────────────────────── -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- ── ZXing barcode scanner ────────────────────────────────────── -->
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.18.6/umd/index.min.js" crossorigin="anonymous" defer></script>
+
+    <!-- ── No-JS fallback (style only in head; body content in body) ── -->
+    <noscript><style>body{display:none}</style></noscript>
+  </head>
+  <body>
+    <!-- No-JS message (only visible when JS is disabled) -->
+    <noscript>
+      <style>
+        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: sans-serif; background: #f8fafc; margin: 0; }
+        .noscript-msg { text-align: center; padding: 40px; }
+        .noscript-msg h2 { color: #0d9488; }
+      </style>
+      <div class="noscript-msg">
+        <h2>💊 PharmaAI</h2>
+        <h3>JavaScript Required</h3>
+        <p>PharmaAI requires JavaScript to run. Please enable JavaScript in your browser settings.</p>
+      </div>
+    </noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
