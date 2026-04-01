@@ -1,0 +1,296 @@
+import { useState, useEffect, useRef } from 'react';
+import { Chart } from 'chart.js/auto';
+import { formatDate, formatStatus, CHART_DATA } from '../data.js';
+import { SearchIcon, BellIcon, WarningIcon, InfoIcon, BoltIcon, ArrowRightIcon, BoxIcon, HeartbeatIcon, CheckIcon, PillIcon, EditIcon } from '../Icons.jsx';
+
+function StatCard({ icon, iconClass, trend, trendClass, value, label, onClick, id }) {
+  return (
+    <div className="stat-card" onClick={onClick}>
+      <div className="stat-header">
+        <div className={`stat-icon ${iconClass}`}>{icon}</div>
+        <span className={`stat-trend ${trendClass}`}>{trend}</span>
+      </div>
+      <div className="stat-value" id={id}>{value}</div>
+      <div className="stat-label">{label}</div>
+    </div>
+  );
+}
+
+function InventoryRow({ item }) {
+  const stockClass = item.stock > 70 ? 'high' : item.stock > 30 ? 'medium' : 'low';
+  return (
+    <tr>
+      <td>
+        <div className="drug-info">
+          <div className="drug-icon"><PillIcon size={18} stroke="var(--accent-teal)" /></div>
+          <div>
+            <div className="drug-name">{item.name}</div>
+            <div className="drug-category">{item.category}</div>
+          </div>
+        </div>
+      </td>
+      <td>
+        <div className="stock-bar">
+          <div className={`stock-fill ${stockClass}`} style={{ width: `${item.stock}%` }} />
+        </div>
+      </td>
+      <td>{item.quantity.toLocaleString()} units</td>
+      <td>{formatDate(item.expiry)}</td>
+      <td><span className={`status-badge ${item.status}`}>{formatStatus(item.status)}</span></td>
+      <td>
+        <button className="action-btn" title="Edit"><EditIcon size={14} /></button>
+        <button className="action-btn" title="Reorder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+            <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+          </svg>
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+function InventoryChart() {
+  const chartRef = useRef(null);
+  const chartInstance = useRef(null);
+  const [activePeriod, setActivePeriod] = useState('week');
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+    if (chartInstance.current) chartInstance.current.destroy();
+    const data = CHART_DATA[activePeriod];
+    chartInstance.current = new Chart(chartRef.current, {
+      type: 'line',
+      data: {
+        labels: data.labels,
+        datasets: [
+          {
+            label: 'Dispensed', data: data.dispensed,
+            borderColor: '#0d9488', backgroundColor: 'rgba(13,148,136,0.1)',
+            borderWidth: 2, fill: true, tension: 0.4,
+            pointBackgroundColor: '#0d9488', pointBorderColor: '#fff',
+            pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6
+          },
+          {
+            label: 'Received', data: data.received,
+            borderColor: '#3b82f6', backgroundColor: 'transparent',
+            borderWidth: 2, fill: false, tension: 0.4,
+            pointBackgroundColor: '#3b82f6', pointBorderColor: '#fff',
+            pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: true, position: 'top', align: 'end', labels: { color: '#64748b', usePointStyle: true, padding: 20, font: { size: 12 } } } },
+        scales: {
+          x: { grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 11 } } },
+          y: { grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 11 } } }
+        },
+        interaction: { intersect: false, mode: 'index' }
+      }
+    });
+    return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+  }, [activePeriod]);
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <h3 className="card-title">Inventory Trends</h3>
+        <div className="tabs">
+          {['week', 'month', 'year'].map(p => (
+            <button key={p} className={`tab${activePeriod === p ? ' active' : ''}`} onClick={() => setActivePeriod(p)}>
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="card-body">
+        <div className="chart-container"><canvas ref={chartRef} /></div>
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard({ user, inventoryData, onNavigate, onOpenModal, onExport }) {
+  const [stats, setStats] = useState({ totalMedications: 0, monthlyDispensed: 0, lowStock: 0, expiringSoon: 0 });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Animate stats on mount
+  useEffect(() => {
+    const targets = { totalMedications: 2847, monthlyDispensed: 12459, lowStock: 23, expiringSoon: 18 };
+    let frame;
+    let start = null;
+    const duration = 1500;
+    const animate = (timestamp) => {
+      if (!start) start = timestamp;
+      const progress = Math.min((timestamp - start) / duration, 1);
+      setStats({
+        totalMedications: Math.floor(targets.totalMedications * progress),
+        monthlyDispensed: Math.floor(targets.monthlyDispensed * progress),
+        lowStock: Math.floor(targets.lowStock * progress),
+        expiringSoon: Math.floor(targets.expiringSoon * progress),
+      });
+      if (progress < 1) frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const filteredInventory = inventoryData.filter(i =>
+    i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    i.category.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <>
+      <header className="header">
+        <div className="header-left">
+          <h1>Pharmacy Dashboard</h1>
+          <p>Welcome back, {user?.name}. Here&apos;s your inventory overview.</p>
+        </div>
+        <div className="header-right">
+          <div className="search-box">
+            <SearchIcon size={16} />
+            <input
+              type="text"
+              placeholder="Search medications, suppliers..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <button className="header-btn" onClick={() => onNavigate('notifications')} title="Notifications">
+            <BellIcon size={18} />
+            <span className="notification-dot" />
+          </button>
+          <button className="user-avatar" onClick={() => {}} title="User">
+            {user?.initials}
+          </button>
+        </div>
+      </header>
+
+      <div className="stats-grid">
+        <StatCard
+          iconClass="teal" icon={<BoxIcon size={20} />}
+          trend="+12%" trendClass="up"
+          value={stats.totalMedications.toLocaleString()} label="Total Medications"
+          onClick={() => onNavigate('inventory')}
+        />
+        <StatCard
+          iconClass="blue" icon={<HeartbeatIcon size={20} />}
+          trend="+8%" trendClass="up"
+          value={stats.monthlyDispensed.toLocaleString()} label="Dispensed This Month"
+          onClick={() => onNavigate('reports')}
+        />
+        <StatCard
+          iconClass="orange" icon={<WarningIcon size={20} />}
+          trend="-3%" trendClass="down"
+          value={stats.lowStock.toLocaleString()} label="Low Stock Items"
+          onClick={() => onNavigate('inventory')}
+        />
+        <StatCard
+          iconClass="purple" icon={<ClockIcon />}
+          trend="+5%" trendClass="up"
+          value={stats.expiringSoon.toLocaleString()} label="Expiring in 30 Days"
+          onClick={() => onNavigate('notifications')}
+        />
+      </div>
+
+      <div className="alerts-grid">
+        <div className="alert-card">
+          <div className="alert-icon critical"><WarningIcon size={20} /></div>
+          <div className="alert-content">
+            <h4>Critical Stock Alert</h4>
+            <p>Insulin Glargine is below critical threshold. Only 45 units remaining.</p>
+            <button className="alert-action" onClick={() => onOpenModal('reorder')}>
+              Reorder Now <ArrowRightIcon size={12} />
+            </button>
+          </div>
+        </div>
+        <div className="alert-card">
+          <div className="alert-icon warning"><InfoIcon size={20} /></div>
+          <div className="alert-content">
+            <h4>Expiry Warning</h4>
+            <p>Amoxicillin 500mg batch expires in 14 days. 230 units in stock.</p>
+            <button className="alert-action" onClick={() => onNavigate('inventory')}>
+              View Details <ArrowRightIcon size={12} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="main-grid">
+        <InventoryChart />
+        <div className="card ai-panel">
+          <div className="ai-header">
+            <div className="ai-badge"><BoltIcon size={12} /> AI Insights</div>
+          </div>
+          <div className="insight-list">
+            <div className="insight-item" onClick={() => onNavigate('predictions')}>
+              <div className="insight-icon alert"><WarningIcon size={16} /></div>
+              <div className="insight-content">
+                <h4>Stock Prediction</h4>
+                <p>Metformin demand expected to increase 23% next week.</p>
+                <div className="insight-time">2 min ago</div>
+              </div>
+            </div>
+            <div className="insight-item" onClick={() => onNavigate('notifications')}>
+              <div className="insight-icon warning"><ClockIcon size={16} /></div>
+              <div className="insight-content">
+                <h4>Expiry Alert</h4>
+                <p>Batch #B-4521 of Omeprazole expires in 7 days.</p>
+                <div className="insight-time">15 min ago</div>
+              </div>
+            </div>
+            <div className="insight-item" onClick={() => onNavigate('suppliers')}>
+              <div className="insight-icon success"><CheckIcon size={16} /></div>
+              <div className="insight-content">
+                <h4>Reorder Optimized</h4>
+                <p>Consolidating orders could save $2,340 this quarter.</p>
+                <div className="insight-time">1 hr ago</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">Current Inventory</h3>
+          <div className="card-actions">
+            <button className="btn btn-secondary" onClick={onExport}>Export</button>
+            <button className="btn btn-primary" onClick={() => onOpenModal('add')}>Add Medication</button>
+          </div>
+        </div>
+        <div className="card-body" style={{ padding: 0 }}>
+          <table className="inventory-table">
+            <thead>
+              <tr>
+                <th>Medication</th>
+                <th>Stock Level</th>
+                <th>Quantity</th>
+                <th>Expiry</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredInventory.map((item, idx) => (
+                <InventoryRow key={idx} item={item} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ClockIcon({ size = 20 }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={size} height={size}>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
