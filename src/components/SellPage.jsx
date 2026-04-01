@@ -114,17 +114,8 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onO
           window.ZXing.BarcodeFormat.UPC_E
         ]);
         codeReaderRef.current = new window.ZXing.BrowserMultiFormatReader(hints, 300);
-        // Pre-request stream to trigger permission prompt on mobile devices, otherwise listVideoInputDevices returns empty
-        let tempStream = null;
-        try { tempStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); } catch (e) {
-          try { tempStream = await navigator.mediaDevices.getUserMedia({ video: true }); } catch (err) {}
-        }
-
         const cameras = await codeReaderRef.current.listVideoInputDevices();
         availableCamerasRef.current = cameras;
-        
-        if (tempStream) tempStream.getTracks().forEach(t => t.stop());
-
         if (!cameras.length) throw new Error('No cameras found');
         setScanningActive(true);
         area.classList.add('scan-active');
