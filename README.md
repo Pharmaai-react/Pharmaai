@@ -88,8 +88,7 @@ Upload the contents of `./dist` to your host. Make sure to:
 
 - Passwords are hashed with **SHA-256 (Web Crypto API)** before being stored in `localStorage`
 - This is a **frontend-only** app — suitable for single-device / demo use
-- For a production multi-user deployment, add a backend server + database  
-  (recommended: Supabase, Firebase, or a custom Node/Express API)
+
 
 ---
 
