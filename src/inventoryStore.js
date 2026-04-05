@@ -70,12 +70,19 @@ function buildUnifiedRecords() {
 
 // ─── persistence ─────────────────────────────────────────────────────────────
 
+// Built-in demo accounts — these get seed inventory on first load
+const DEMO_USERNAMES = new Set(['admin', 'doctor', 'staff']);
+
 export function loadInventory(username) {
   try {
     const raw = localStorage.getItem(storageKey(username));
     if (raw) return JSON.parse(raw);
   } catch { }
-  const fresh = buildUnifiedRecords();
+
+  // Demo accounts get pre-seeded inventory; every new real account starts empty
+  const fresh = DEMO_USERNAMES.has(username?.toLowerCase())
+    ? buildUnifiedRecords()
+    : [];
   saveInventory(fresh, username);
   return fresh;
 }
@@ -86,9 +93,11 @@ export function saveInventory(records, username) {
   } catch { }
 }
 
-/** Hard-reset to initial seed data (useful for dev / settings) */
+/** Hard-reset to initial data for demo accounts, empty for real users */
 export function resetInventory(username) {
-  const fresh = buildUnifiedRecords();
+  const fresh = DEMO_USERNAMES.has(username?.toLowerCase())
+    ? buildUnifiedRecords()
+    : [];
   saveInventory(fresh, username);
   return fresh;
 }
