@@ -101,7 +101,7 @@ export default function App() {
     // Also listen for auth changes — catches email confirmation redirects
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-        const user = await getCurrentUser();
+        const user = await getCurrentUser(session.user);
         if (user) {
           const inv = await loadInventory(user.id);
           setInventory(inv);
@@ -139,16 +139,15 @@ export default function App() {
   }, []);
 
   const handleLogin = useCallback(async (username, password) => {
-    const user = await loginUser(username, password);
-    if (!user) return false;
-    activateUser(user);
-    return true;
-  }, [activateUser]);
+    const errorMsg = await loginUser(username, password);
+    if (errorMsg) return errorMsg;
+    // Success: do not manually activate, let onAuthStateChange handle it!
+    return null;
+  }, []);
 
   const handleSignUp = useCallback((user) => {
-    // After successful registration, land directly on dashboard
-    activateUser(user);
-  }, [activateUser]);
+    // onAuthStateChange will trigger activateUser automatically.
+  }, []);
 
   const handleLogout = useCallback(async () => {
     await logoutUser();
