@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { QRIcon, CameraIcon, StopIcon, FlipIcon, ScanBarcodeIcon, PillIcon, CartIcon, TrashIcon, CheckIcon } from '../Icons.jsx';
 
-export default function SellPage({ medicineDB, onNavigate, showNotification, onOpenReceiptModal, onSaleComplete, preloadItem, onPreloadConsumed }) {
+export default function SellPage({ medicineDB, onNavigate, showNotification, onSaleComplete, salesHistory = [], preloadItem, onPreloadConsumed, currentUser }) {
   const [cart, setCart] = useState([]);
-  const [salesHistory, setSalesHistory] = useState([]);
   const [lastScannedItem, setLastScannedItem] = useState(null);
   const [scannedQty, setScannedQty] = useState(1);
   const [scanStatus, setScanStatus] = useState({ type: 'idle', msg: 'Camera not started — click the scan area or the button below' });
@@ -318,10 +317,8 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onO
       govtScheme: govtScheme || null,
       discAmt, total, time: timeStr, payment: paymentMethod, date: now
     };
-    // ── Deduct stock from the central inventory in real-time ──
+    // onSaleComplete handles inventory deduction, receipt modal, and sales history
     if (onSaleComplete) onSaleComplete(cart, { ...saleData, itemCount: cart.length });
-    setSalesHistory(prev => [{ txnId, patient: saleData.patient, itemCount: cart.length, total, time: timeStr, payment: paymentMethod }, ...prev]);
-    onOpenReceiptModal(saleData);
     clearCart();
     showNotification('Sale completed! ₹' + total.toFixed(2) + ' — ' + paymentMethod);
   };
