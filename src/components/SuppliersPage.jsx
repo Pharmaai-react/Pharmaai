@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '../supabase.js';
 
 const EMOJI_OPTIONS = ['💊', '🏥', '🧪', '🌿', '⚗️', '🔬', '💉', '🩺', '🧬', '📦', '🏭', '🔭'];
 const BG_OPTIONS = [
@@ -21,19 +22,6 @@ const EMPTY_FORM = {
   phone: '', email: '', notes: '', rating: '5.0',
 };
 
-function storageKey(username) {
-  return username ? `pharmaai_suppliers_v1_${username.toLowerCase()}` : 'pharmaai_suppliers_v1';
-}
-function loadSuppliers(username) {
-  try {
-    const raw = localStorage.getItem(storageKey(username));
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  return SEED_SUPPLIERS;
-}
-function saveSuppliers(suppliers, username) {
-  try { localStorage.setItem(storageKey(username), JSON.stringify(suppliers)); } catch { /* ignore */ }
-}
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 function IconEdit() {
@@ -57,19 +45,23 @@ function IconSearch() {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function SuppliersPage({ onOpenModal, showNotification, currentUser }) {
-  const username = currentUser?.username;
-  const [suppliers, setSuppliers] = useState(() => loadSuppliers(username));
+  const [suppliers, setSuppliers] = useState([]);
   const [search, setSearch] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  // Reload on user switch
-  useEffect(() => { setSuppliers(loadSuppliers(username)); }, [username]);
-
-  // Persist on every change
-  useEffect(() => { saveSuppliers(suppliers, username); }, [suppliers, username]);
+  // Load suppliers from Supabase
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    supabase
+      .from('suppliers')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .order('created_at')
+      .then(({ data }) => setSuppliers(data || []));
+  }, [currentUser?.id]);
 
   const filtered = suppliers.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -95,7 +87,7 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
     setForm(f => ({ ...f, [name]: value }));
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!form.name.trim() || !form.city.trim()) {
       showNotification('⚠️ Supplier name and city are required.');
@@ -103,22 +95,37 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
     }
     const tagsArr = form.tags.split(',').map(t => t.trim()).filter(Boolean);
     if (editingId !== null) {
+      await supabase.from('suppliers').update({
+        name: form.name, city: form.city, country: form.country,
+        since: form.since, tags: tagsArr, contact_name: form.contactName,
+        phone: form.phone, email: form.email, notes: form.notes,
+        rating: parseFloat(form.rating) || 5.0, emoji: form.emoji, color: form.bg,
+      }).eq('id', editingId);
       setSuppliers(prev => prev.map(s =>
         s.id === editingId ? { ...s, ...form, tags: tagsArr } : s
       ));
       showNotification(`✅ ${form.name} updated!`);
     } else {
-      setSuppliers(prev => [
-        { ...form, id: Date.now(), tags: tagsArr, orders: 0, rating: form.rating || '5.0' },
-        ...prev,
-      ]);
+      const { data } = await supabase
+        .from('suppliers')
+        .insert({
+          user_id: currentUser.id,
+          name: form.name, city: form.city, country: form.country,
+          since: form.since, tags: tagsArr, contact_name: form.contactName,
+          phone: form.phone, email: form.email, notes: form.notes,
+          rating: parseFloat(form.rating) || 5.0,
+          orders: 0, emoji: form.emoji, color: form.bg,
+        })
+        .select().single();
+      if (data) setSuppliers(prev => [data, ...prev]);
       showNotification(`✅ ${form.name} added to suppliers!`);
     }
     closeDrawer();
   }
 
-  function handleDelete(id) {
+  async function handleDelete(id) {
     const name = suppliers.find(s => s.id === id)?.name;
+    await supabase.from('suppliers').delete().eq('id', id);
     setSuppliers(prev => prev.filter(s => s.id !== id));
     setDeleteConfirm(null);
     showNotification(`🗑️ ${name} removed.`);
