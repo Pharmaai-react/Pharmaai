@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAppNotifications } from './useAppNotifications.js';
-import { loginUser } from './userStore.js';
+import { loginUser, logoutUser, getCurrentUser } from './userStore.js';
 import {
   loadInventory,
-  saveInventory,
-  resetInventory,
+  addInventoryItem,
+  updateInventoryItem,
+  deleteInventoryItem,
   applyCartSale,
+  resetInventory,
   toInventoryData,
   toMedicineDB,
 } from './inventoryStore.js';
@@ -74,26 +76,39 @@ export default function App() {
 
   // ─── Pharmacy Network Alerts (unscoped — all pharmacies) ────────────────
   const { networkAlerts, hasNew: hasNewNetwork, dismissAlert, dismissAll, markSeen } =
-    useNetworkAlerts(currentUser?.username, currentUser?.pharmacyName, inventory);
+    useNetworkAlerts(currentUser, inventory);
 
   // ─── Pharmacy Room System ─────────────────────────────────────────────────
   const rooms = usePharmacyRooms(currentUser, inventory);
 
-  // Persist to the user-scoped localStorage key on every inventory change
-  // Also scan for threshold breaches → fire real-time notifications
+  // Restore session on page refresh
+  useEffect(() => {
+    getCurrentUser().then(user => {
+      if (user) {
+        loadInventory(user.id).then(inv => {
+          setInventory(inv);
+          setCurrentUser(user);
+          const defaultPage = canAccess(user.role, 'dashboard') ? 'dashboard' : 'inventory';
+          setCurrentPage(defaultPage);
+          setAuthState(AUTH_STATES.DASHBOARD);
+        });
+      }
+    });
+  }, []);
+
+  // Scan inventory for threshold breaches → fire real-time notifications
   useEffect(() => {
     if (currentUser) {
-      saveInventory(inventory, currentUser.username);
       processInventory(inventory);
     }
   }, [inventory, currentUser, processInventory]);
 
   // ─── Auth handlers ────────────────────────────────────────────────────────
 
-  const activateUser = useCallback((user) => {
+  const activateUser = useCallback(async (user) => {
     setCurrentUser(user);
-    setInventory(loadInventory(user.username));
-    // Redirect restricted roles to their first allowed page
+    const inv = await loadInventory(user.id);
+    setInventory(inv);
     const defaultPage = canAccess(user.role, 'dashboard') ? 'dashboard' : 'inventory';
     setCurrentPage(defaultPage);
     setAuthState(AUTH_STATES.DASHBOARD);
@@ -111,7 +126,8 @@ export default function App() {
     activateUser(user);
   }, [activateUser]);
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    await logoutUser();
     setCurrentUser(null);
     setInventory([]);
     setCurrentPage('dashboard');
@@ -121,55 +137,45 @@ export default function App() {
 
   // ─── Inventory mutations ──────────────────────────────────────────────────
 
-  const handleAddMedication = useCallback((med) => {
-    setInventory((prev) => {
-      const newRec = {
-        barcode: med.barcode,
-        name: med.name,
-        category: med.category,
-        price: med.price,
-        unit: med.unit,
-        quantity: med.quantity,
-        baseQuantity: med.quantity,
-        expiry: med.expiry,
-        stock: Math.min(100, Math.round((med.quantity / med.quantity) * 100)),
-        status: med.status || 'in-stock',
-        lastUpdated: new Date().toISOString(),
-      };
-      return [newRec, ...prev];
-    });
-    showNotification('✅ ' + med.name + ' added to inventory!');
-    notifyMedAdded(med);
-  }, [showNotification, notifyMedAdded]);
+  const handleAddMedication = useCallback(async (item) => {
+    const newRecord = await addInventoryItem(currentUser.id, item);
+    if (newRecord) {
+      setInventory(prev => [...prev, newRecord]);
+      showNotification(`✅ ${item.name} added to inventory`);
+      notifyMedAdded(item.name);
+    }
+  }, [currentUser, showNotification, notifyMedAdded]);
 
-  const handleSaleComplete = useCallback((cartItems, saleData) => {
-    setInventory((prev) => applyCartSale(prev, cartItems));
-    if (saleData) notifySale(saleData);
-  }, [notifySale]);
+  const handleSaleComplete = useCallback(async (cart, receipt) => {
+    await applyCartSale(currentUser.id, cart);
+    const updated = await loadInventory(currentUser.id);
+    setInventory(updated);
+    notifySale(cart);
+    setReceiptData(receipt);
+    setOpenModal('receipt');
+  }, [currentUser, notifySale]);
 
   // Update a single inventory item (from InventoryPage edit modal)
-  const handleUpdateItem = useCallback((updatedItem) => {
-    setInventory(prev =>
-      prev.map(rec => rec.name === updatedItem.name ? { ...rec, ...updatedItem } : rec)
-    );
-    showNotification('✅ ' + updatedItem.name + ' updated');
-    notifyMedUpdated(updatedItem);
+  const handleUpdateItem = useCallback(async (updatedItem) => {
+    await updateInventoryItem(updatedItem._id, updatedItem);
+    setInventory(prev => prev.map(r => r._id === updatedItem._id ? { ...r, ...updatedItem } : r));
+    showNotification(`✅ ${updatedItem.name} updated`);
+    notifyMedUpdated(updatedItem.name);
   }, [showNotification, notifyMedUpdated]);
 
-  const handleResetInventory = useCallback(() => {
-    setInventory(resetInventory(currentUser?.username));
-    showNotification('🔄 Inventory reset to initial data');
+  const handleResetInventory = useCallback(async () => {
+    await resetInventory(currentUser.id);
+    setInventory([]);
+    showNotification('🔄 Inventory cleared');
     notifyReset();
   }, [showNotification, currentUser, notifyReset]);
 
   // Delete a single medication from inventory
-  const handleDeleteItem = useCallback((itemName, itemExpiry) => {
-    setInventory(prev => prev.filter(rec => {
-      // Remove only the exact batch: same name AND same expiry date
-      return !(rec.name === itemName && rec.expiry === itemExpiry);
-    }));
-    showNotification(`🗑️ ${itemName} (expiry: ${itemExpiry}) removed from inventory`);
-  }, [showNotification]);
+  const handleDeleteItem = useCallback(async (itemName, itemExpiry) => {
+    await deleteInventoryItem(currentUser.id, itemName, itemExpiry);
+    setInventory(prev => prev.filter(r => !(r.name === itemName && r.expiry === itemExpiry)));
+    showNotification(`🗑️ ${itemName} removed from inventory`);
+  }, [currentUser, showNotification]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -294,6 +300,7 @@ export default function App() {
               onSaleComplete={handleSaleComplete}
               preloadItem={preloadSellItem}
               onPreloadConsumed={() => setPreloadSellItem(null)}
+              currentUser={currentUser}
             />
           )}
           {currentPage === 'suppliers' && canAccess(currentUser?.role, 'suppliers') && (
