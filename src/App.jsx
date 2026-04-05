@@ -10,6 +10,7 @@ import {
   toMedicineDB,
 } from './inventoryStore.js';
 import { useNetworkAlerts } from './pharmacyNetwork.js';
+import { usePharmacyRooms } from './pharmacyRooms.js';
 import { useNotification } from './useNotification.js';
 import LoginPage from './components/LoginPage.jsx';
 import SignUpPage from './components/SignUpPage.jsx';
@@ -27,6 +28,7 @@ import AddMedicationModal from './components/AddMedicationModal.jsx';
 import ReorderModal from './components/ReorderModal.jsx';
 import ReceiptModal from './components/ReceiptModal.jsx';
 import NetworkAlertPanel from './components/NetworkAlertPanel.jsx';
+import RoomPanel from './components/RoomPanel.jsx';
 
 // 'login' | 'signup' | 'dashboard'
 const AUTH_STATES = { LOGIN: 'login', SIGNUP: 'signup', DASHBOARD: 'dashboard' };
@@ -69,12 +71,12 @@ export default function App() {
   }, [darkMode]);
   const toggleDarkMode = useCallback(() => setDarkMode(d => !d), []);
 
-  // ─── Pharmacy Network ─────────────────────────────────────────────────────
-  const { networkAlerts, hasNew, dismissAlert, dismissAll, markSeen } = useNetworkAlerts(
-    currentUser?.username ?? null,
-    currentUser?.pharmacyName ?? '',
-    inventory,
-  );
+  // ─── Pharmacy Network Alerts (unscoped — all pharmacies) ────────────────
+  const { networkAlerts, hasNew: hasNewNetwork, dismissAlert, dismissAll, markSeen } =
+    useNetworkAlerts(currentUser?.username, currentUser?.pharmacyName, inventory);
+
+  // ─── Pharmacy Room System ─────────────────────────────────────────────────
+  const rooms = usePharmacyRooms(currentUser, inventory);
 
   // Persist to the user-scoped localStorage key on every inventory change
   // Also scan for threshold breaches → fire real-time notifications
@@ -290,14 +292,55 @@ export default function App() {
         </main>
       </div>
 
-      {/* Pharmacy Network Alert Panel */}
-      <NetworkAlertPanel
-        networkAlerts={networkAlerts}
-        hasNew={hasNew}
-        onDismiss={dismissAlert}
-        onDismissAll={dismissAll}
-        onMarkSeen={markSeen}
-      />
+      {/* Pharmacy Network Alert Panel — scoped to room members only */}
+      {(() => {
+        // Build set of usernames that share at least one room with current user
+        const roomMemberUsernames = new Set(
+          (rooms.rooms || [])
+            .flatMap(r => r.members.map(m => m.username))
+            .filter(u => u !== currentUser?.username)
+        );
+        // Build a map: username → room names (for tagging alerts)
+        const usernameToRooms = {};
+        (rooms.rooms || []).forEach(r => {
+          r.members.forEach(m => {
+            if (m.username !== currentUser?.username) {
+              if (!usernameToRooms[m.username]) usernameToRooms[m.username] = [];
+              usernameToRooms[m.username].push(r.name);
+            }
+          });
+        });
+        // Tag each alert with its room name(s) and filter to room members only
+        const scopedAlerts = networkAlerts
+          .filter(a => roomMemberUsernames.has(a.fromUsername))
+          .map(a => ({ ...a, inRooms: usernameToRooms[a.fromUsername] || [] }));
+
+        return (
+          <NetworkAlertPanel
+            networkAlerts={scopedAlerts}
+            hasNew={hasNewNetwork}
+            onDismiss={dismissAlert}
+            onDismissAll={dismissAll}
+            onMarkSeen={markSeen}
+            hasRooms={(rooms.rooms || []).length > 0}
+            noRoomsYet={!currentUser || (rooms.rooms || []).length === 0}
+          />
+        );
+      })()}
+
+      {/* Pharmacy Network Rooms */}
+      {currentUser && (
+        <RoomPanel
+          rooms={rooms.rooms}
+          totalRoomAlerts={rooms.totalRoomAlerts}
+          hasNewRoomAlert={rooms.hasNewRoomAlert}
+          currentUser={currentUser}
+          onCreateRoom={rooms.createRoom}
+          onJoinRoom={rooms.joinRoom}
+          onLeaveRoom={rooms.leaveRoom}
+          onMarkSeen={rooms.markSeen}
+        />
+      )}
 
       {/* Modals */}
       <AddMedicationModal
