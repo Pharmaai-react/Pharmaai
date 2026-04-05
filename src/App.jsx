@@ -14,6 +14,7 @@ import {
 import { useNetworkAlerts } from './pharmacyNetwork.js';
 import { usePharmacyRooms } from './pharmacyRooms.js';
 import { useNotification } from './useNotification.js';
+import { supabase } from './supabase.js';
 import LoginPage from './components/LoginPage.jsx';
 import SignUpPage from './components/SignUpPage.jsx';
 import Sidebar, { canAccess } from './components/Sidebar.jsx';
@@ -56,6 +57,7 @@ export default function App() {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [preloadSellItem, setPreloadSellItem] = useState(null); // item to pre-load in Sell
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile sidebar toggle
+  const [salesHistory, setSalesHistory] = useState([]); // persists across page navigation
   const { notifications, showNotification } = useNotification();
 
   // ─── Dark mode ────────────────────────────────────────────────────────────
@@ -81,8 +83,9 @@ export default function App() {
   // ─── Pharmacy Room System ─────────────────────────────────────────────────
   const rooms = usePharmacyRooms(currentUser, inventory);
 
-  // Restore session on page refresh
+  // Handle session restore (page refresh) AND email confirmation redirects
   useEffect(() => {
+    // Immediately check for existing session
     getCurrentUser().then(user => {
       if (user) {
         loadInventory(user.id).then(inv => {
@@ -94,6 +97,27 @@ export default function App() {
         });
       }
     });
+
+    // Also listen for auth changes — catches email confirmation redirects
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+        const user = await getCurrentUser();
+        if (user) {
+          const inv = await loadInventory(user.id);
+          setInventory(inv);
+          setCurrentUser(user);
+          const defaultPage = canAccess(user.role, 'dashboard') ? 'dashboard' : 'inventory';
+          setCurrentPage(defaultPage);
+          setAuthState(AUTH_STATES.DASHBOARD);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        setInventory([]);
+        setAuthState(AUTH_STATES.LOGIN);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   // Scan inventory for threshold breaches → fire real-time notifications
@@ -140,9 +164,13 @@ export default function App() {
   const handleAddMedication = useCallback(async (item) => {
     const newRecord = await addInventoryItem(currentUser.id, item);
     if (newRecord) {
-      setInventory(prev => [...prev, newRecord]);
+      // Reload full inventory to guarantee UI is in sync with Supabase
+      const updated = await loadInventory(currentUser.id);
+      setInventory(updated);
       showNotification(`✅ ${item.name} added to inventory`);
       notifyMedAdded(item.name);
+    } else {
+      showNotification(`❌ Failed to add ${item.name} — check console for details`);
     }
   }, [currentUser, showNotification, notifyMedAdded]);
 
@@ -151,6 +179,17 @@ export default function App() {
     const updated = await loadInventory(currentUser.id);
     setInventory(updated);
     notifySale(cart);
+    // Append to today's sales history (persists across page navigation)
+    if (receipt) {
+      setSalesHistory(prev => [{
+        txnId:     receipt.txnId,
+        patient:   receipt.patient,
+        itemCount: receipt.itemCount || cart.length,
+        total:     receipt.total,
+        time:      receipt.time,
+        payment:   receipt.payment,
+      }, ...prev]);
+    }
     setReceiptData(receipt);
     setOpenModal('receipt');
   }, [currentUser, notifySale]);
@@ -293,11 +332,11 @@ export default function App() {
           {currentPage === 'interactions' && canAccess(currentUser?.role, 'interactions') && <InteractionsPage onInteractionChecked={notifyInteractionCheck} />}
           {currentPage === 'sell' && (
             <SellPage
-              medicineDB={medicineDB}
+              medicineDB={inventoryData}
               onNavigate={setCurrentPage}
               showNotification={showNotification}
-              onOpenReceiptModal={(data) => { setReceiptData(data); setOpenModal('receipt'); }}
               onSaleComplete={handleSaleComplete}
+              salesHistory={salesHistory}
               preloadItem={preloadSellItem}
               onPreloadConsumed={() => setPreloadSellItem(null)}
               currentUser={currentUser}
@@ -394,7 +433,7 @@ export default function App() {
         isOpen={openModal === 'add'}
         onClose={() => setOpenModal(null)}
         onAdd={handleAddMedication}
-        medicineDB={medicineDB}
+        medicineDB={inventoryData}
         showNotification={showNotification}
       />
       <ReorderModal
