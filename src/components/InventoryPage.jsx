@@ -2,6 +2,17 @@ import { useState, useEffect } from 'react';
 import { formatDate, formatStatus } from '../data.js';
 import { PillIcon, EditIcon, CloseIcon } from '../Icons.jsx';
 
+function TrashIcon({ size = 14 }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={size} height={size}>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" /><path d="M14 11v6" />
+      <path d="M9 6V4h6v2" />
+    </svg>
+  );
+}
+
 function timeAgo(isoString) {
   if (!isoString) return null;
   const diff = Date.now() - new Date(isoString).getTime();
@@ -166,7 +177,7 @@ function PriceCell({ price, unit }) {
   );
 }
 
-function InventoryRow({ item, onEdit, onAddToSell }) {
+function InventoryRow({ item, onEdit, onAddToSell, onDelete }) {
   const stockClass = item.stock > 70 ? 'high' : item.stock > 30 ? 'medium' : 'low';
   const isRecentlyUpdated = item.lastUpdated &&
     (Date.now() - new Date(item.lastUpdated).getTime()) < 60000;
@@ -228,6 +239,14 @@ function InventoryRow({ item, onEdit, onAddToSell }) {
             <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
           </svg>
         </button>
+        <button
+          className="action-btn"
+          title="Delete this medication"
+          onClick={() => onDelete(item)}
+          style={{ color: 'var(--accent-red)' }}
+        >
+          <TrashIcon size={14} />
+        </button>
       </td>
     </tr>
   );
@@ -236,15 +255,17 @@ function InventoryRow({ item, onEdit, onAddToSell }) {
 /* ─── Page ────────────────────────────────────────────────────────────────── */
 export default function InventoryPage({
   inventoryData, onOpenModal, onExport, onResetInventory,
-  onUpdateItem,   // (updatedItem) => void  — saves edits back to App state
-  onNavigate,     // (page) => void         — for "go to sell" navigation
-  onPreloadSell,  // (item) => void         — pre-loads an item into the Sell page
+  onUpdateItem,
+  onDeleteItem,
+  onNavigate,
+  onPreloadSell,
 }) {
   const [filter, setFilter] = useState('all');
   const [sortKey, setSortKey] = useState('expiry');
   const [sortDir, setSortDir] = useState('asc');
   const [, setTick] = useState(0);
   const [editingItem, setEditingItem] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null); // item to confirm-delete
   const [toast, setToast] = useState('');
 
   useEffect(() => {
@@ -314,6 +335,12 @@ export default function InventoryPage({
     setToast(`✅ ${updatedItem.name} updated successfully`);
   };
 
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return;
+    if (onDeleteItem) onDeleteItem(deleteTarget.name);
+    setDeleteTarget(null);
+  };
+
   const handleAddToSell = (item) => {
     if (onPreloadSell) onPreloadSell(item);
     if (onNavigate) onNavigate('sell');
@@ -329,6 +356,30 @@ export default function InventoryPage({
           onSave={handleSaveEdit}
           onClose={() => setEditingItem(null)}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="modal-overlay active" onClick={() => setDeleteTarget(null)}>
+          <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">🗑️ Delete Medication</h3>
+              <button className="modal-close" onClick={() => setDeleteTarget(null)}><CloseIcon size={16} /></button>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center', padding: '28px 24px' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+              <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", marginBottom: 8 }}>Are you sure?</h3>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                This will permanently delete <b>{deleteTarget.name}</b> ({deleteTarget.quantity.toLocaleString()} units)
+                from your inventory. This action cannot be undone.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+              <button className="btn btn-danger" onClick={handleConfirmDelete}>🗑️ Delete Permanently</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Inline toast */}
@@ -469,6 +520,7 @@ export default function InventoryPage({
                   item={item}
                   onEdit={setEditingItem}
                   onAddToSell={handleAddToSell}
+                  onDelete={setDeleteTarget}
                 />
               ))}
             </tbody>
