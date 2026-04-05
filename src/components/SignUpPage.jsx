@@ -11,6 +11,7 @@ export default function SignUpPage({ onSignUp, onGoToLogin }) {
     password: '',
     confirmPassword: '',
     name: '',
+    email: '',
     role: 'Pharmacist',
     pharmacyName: '',
     pharmacyAddress: '',
@@ -65,6 +66,7 @@ export default function SignUpPage({ onSignUp, onGoToLogin }) {
 
   const validateStep1 = () => {
     if (!form.name.trim()) return 'Please enter your full name.';
+    if (!form.email.trim() || !/^[^@]+@[^@]+\.[^@]+$/.test(form.email)) return 'Please enter a valid email address.';
     if (form.username.length < 3) return 'Username must be at least 3 characters.';
     if (usernameStatus === 'taken') return 'That username is already taken.';
     if (form.password.length < 6) return 'Password must be at least 6 characters.';
@@ -173,6 +175,16 @@ export default function SignUpPage({ onSignUp, onGoToLogin }) {
                 id="signup-name" type="text" className="form-input"
                 placeholder="e.g. Dr. Priya Sharma"
                 value={form.name} onChange={update('name')} onKeyDown={handleKeyDown} autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Email Address *</label>
+              <input
+                id="signup-email" type="email" className="form-input"
+                placeholder="e.g. doctor@hospital.com"
+                value={form.email} onChange={update('email')} onKeyDown={handleKeyDown}
+                autoComplete="email"
               />
             </div>
 
