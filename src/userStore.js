@@ -39,6 +39,7 @@ const SEED_USERS = {
     initials: 'DS',
     pharmacyName: 'MediCare Pharmacy',
     pharmacyAddress: '123 Health Ave, Mumbai',
+    pharmacyId: 'PHARM00001',
     createdAt: '2024-01-01T00:00:00Z',
   },
   doctor: {
@@ -48,6 +49,7 @@ const SEED_USERS = {
     initials: 'DJ',
     pharmacyName: 'City Pharmacy',
     pharmacyAddress: '456 Wellness St, Delhi',
+    pharmacyId: 'PHARM00002',
     createdAt: '2024-01-01T00:00:00Z',
   },
   staff: {
@@ -57,6 +59,7 @@ const SEED_USERS = {
     initials: 'SK',
     pharmacyName: 'Wellness Drugs',
     pharmacyAddress: '789 Care Blvd, Bangalore',
+    pharmacyId: 'PHARM00003',
     createdAt: '2024-01-01T00:00:00Z',
   },
 };
@@ -116,7 +119,7 @@ export async function loginUser(username, password) {
  * Register a new account (hashes password before storing).
  * @returns {Promise<{ ok: true, user } | { ok: false, error: string }>}
  */
-export async function registerUser({ username, password, name, role, pharmacyName, pharmacyAddress }) {
+export async function registerUser({ username, password, name, role, pharmacyName, pharmacyAddress, pharmacyId }) {
   if (!username || !password || !name || !pharmacyName) {
     return { ok: false, error: 'All required fields must be filled.' };
   }
@@ -127,11 +130,26 @@ export async function registerUser({ username, password, name, role, pharmacyNam
     return { ok: false, error: 'Password must be at least 6 characters.' };
   }
 
+  // Pharmacy ID validation
+  const pid = (pharmacyId || '').trim().toUpperCase();
+  if (!pid) {
+    return { ok: false, error: 'Pharmacy ID is required.' };
+  }
+  if (!/^[A-Z0-9]{1,10}$/.test(pid)) {
+    return { ok: false, error: 'Pharmacy ID must be 1–10 alphanumeric characters (A-Z, 0-9).' };
+  }
+
   const users = loadUsers();
   const key = username.trim().toLowerCase();
 
   if (users[key]) {
     return { ok: false, error: 'Username already taken. Please choose another.' };
+  }
+
+  // Check Pharmacy ID uniqueness across all registered users
+  const pidTaken = Object.values(users).some(u => u.pharmacyId === pid);
+  if (pidTaken) {
+    return { ok: false, error: `Pharmacy ID "${pid}" is already registered. Use a different ID.` };
   }
 
   const initials = name
@@ -150,6 +168,7 @@ export async function registerUser({ username, password, name, role, pharmacyNam
     initials,
     pharmacyName: pharmacyName.trim(),
     pharmacyAddress: (pharmacyAddress || '').trim(),
+    pharmacyId: pid,
     createdAt: new Date().toISOString(),
   };
 
@@ -165,4 +184,25 @@ export function isUsernameAvailable(username) {
   if (!username || username.length < 3) return false;
   const users = loadUsers();
   return !users[username.trim().toLowerCase()];
+}
+
+/** Check if a pharmacyId is available (for real-time validation) */
+export function isPharmacyIdAvailable(pharmacyId) {
+  if (!pharmacyId || pharmacyId.length < 1) return false;
+  const pid = pharmacyId.trim().toUpperCase();
+  if (!/^[A-Z0-9]{1,10}$/.test(pid)) return false;
+  const users = loadUsers();
+  return !Object.values(users).some(u => u.pharmacyId === pid);
+}
+
+/** Generate a random unique 10-char alphanumeric Pharmacy ID */
+export function generatePharmacyId() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const users = loadUsers();
+  const taken = new Set(Object.values(users).map(u => u.pharmacyId).filter(Boolean));
+  let id;
+  do {
+    id = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  } while (taken.has(id));
+  return id;
 }
