@@ -53,6 +53,7 @@ export default function App() {
   const [receiptData, setReceiptData] = useState(null);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [preloadSellItem, setPreloadSellItem] = useState(null); // item to pre-load in Sell
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile sidebar toggle
   const { notifications, showNotification } = useNotification();
 
   // ─── Dark mode ────────────────────────────────────────────────────────────
@@ -209,9 +210,46 @@ export default function App() {
 
   // ─── Main dashboard ───────────────────────────────────────────────────────
 
+  // ─── Page label map for mobile header ────────────────────────────────────
+  const PAGE_LABELS = {
+    dashboard: 'Dashboard', inventory: 'Inventory', predictions: 'AI Predictions',
+    interactions: 'Drug Interactions', sell: 'Sell Medicines', suppliers: 'Suppliers',
+    reports: 'Reports', settings: 'Settings', notifications: 'Notifications',
+  };
+
   return (
     <>
       <div className="app-container">
+        {/* ── Mobile top header ── */}
+        <div className="mobile-topbar">
+          <button
+            className="hamburger-btn"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="22" height="22">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+          <div className="mobile-logo">
+            <div className="mobile-logo-icon">
+              <svg viewBox="0 0 24 24" fill="white" width="18" height="18"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zM12 8v8M8 12h8" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round"/></svg>
+            </div>
+            <span className="mobile-logo-text">{PAGE_LABELS[currentPage] || 'PharmaAI'}</span>
+          </div>
+          <button
+            className="header-btn"
+            onClick={() => setCurrentPage('notifications')}
+            style={{ position: 'relative' }}
+            aria-label="Notifications"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+            {unreadCount > 0 && <span className="notification-dot" />}
+          </button>
+        </div>
+
         <Sidebar
           currentPage={currentPage}
           onNavigate={setCurrentPage}
@@ -220,6 +258,8 @@ export default function App() {
           notifCount={unreadCount}
           profileDropdownOpen={profileDropdownOpen}
           onToggleProfile={() => setProfileDropdownOpen(p => !p)}
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
         />
         <main className="main-content">
           {currentPage === 'dashboard' && canAccess(currentUser?.role, 'dashboard') && (
