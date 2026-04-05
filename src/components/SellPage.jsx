@@ -26,6 +26,8 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onO
   const availableCamerasRef = useRef([]);
   const currentCamIndexRef = useRef(0);
   const streamRef = useRef(null);
+  // Track camera count in state so the Flip button re-renders when cameras are discovered
+  const [cameraCount, setCameraCount] = useState(0);
 
   /**
    * FEFO check: find same-name batches with earlier (sooner) expiry that still have stock.
@@ -116,6 +118,7 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onO
         codeReaderRef.current = new window.ZXing.BrowserMultiFormatReader(hints, 300);
         const cameras = await codeReaderRef.current.listVideoInputDevices();
         availableCamerasRef.current = cameras;
+        setCameraCount(cameras.length); // trigger re-render so Flip button appears
         if (!cameras.length) throw new Error('No cameras found');
         setScanningActive(true);
         area.classList.add('scan-active');
@@ -159,6 +162,7 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onO
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     if (video && video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
     setScanningActive(false);
+    setCameraCount(0);
     if (area) area.classList.remove('scan-active');
     if (video) video.style.removeProperty('display');
     setScanStatus({ type: 'idle', msg: 'Camera stopped' });
@@ -187,16 +191,30 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onO
   }, [preloadItem]);
 
   const switchCamera = async () => {
-    if (!availableCamerasRef.current.length || !codeReaderRef.current) return;
-    currentCamIndexRef.current = (currentCamIndexRef.current + 1) % availableCamerasRef.current.length;
+    const cameras = availableCamerasRef.current;
+    if (!cameras.length || !codeReaderRef.current) return;
+
+    // Advance to next camera index
+    currentCamIndexRef.current = (currentCamIndexRef.current + 1) % cameras.length;
+    const nextDeviceId = cameras[currentCamIndexRef.current].deviceId;
+
     try {
+      // Must reset the existing decode session before starting a new one
+      codeReaderRef.current.reset();
+
+      // Small delay so the browser releases the previous stream
+      await new Promise(r => setTimeout(r, 150));
+
       await codeReaderRef.current.decodeFromVideoDevice(
-        availableCamerasRef.current[currentCamIndexRef.current].deviceId,
+        nextDeviceId,
         videoRef.current,
         (result) => { if (result) handleScannedCode(result.getText()); }
       );
-      showNotification('Camera switched');
-    } catch { showNotification('Switch failed'); }
+      showNotification('📸 Camera switched');
+    } catch (err) {
+      console.warn('Camera switch failed:', err);
+      showNotification('⚠️ Could not switch camera');
+    }
   };
 
   const handleSearch = (val) => {
@@ -550,7 +568,7 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onO
                     <button className="scan-btn secondary" onClick={stopScan}>
                       <StopIcon size={16} /> Stop Camera
                     </button>
-                    {availableCamerasRef.current.length > 1 && (
+                    {cameraCount > 1 && (
                       <button className="scan-btn secondary" onClick={switchCamera}>
                         <FlipIcon size={16} /> Flip
                       </button>
