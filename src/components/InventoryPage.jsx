@@ -337,7 +337,7 @@ export default function InventoryPage({
 
   const handleConfirmDelete = () => {
     if (!deleteTarget) return;
-    if (onDeleteItem) onDeleteItem(deleteTarget.name);
+    if (onDeleteItem) onDeleteItem(deleteTarget.name, deleteTarget.expiry);
     setDeleteTarget(null);
   };
 
@@ -370,8 +370,12 @@ export default function InventoryPage({
               <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
               <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", marginBottom: 8 }}>Are you sure?</h3>
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                This will permanently delete <b>{deleteTarget.name}</b> ({deleteTarget.quantity.toLocaleString()} units)
-                from your inventory. This action cannot be undone.
+                This will permanently delete the batch of <b>{deleteTarget.name}</b>
+                {deleteTarget.expiry && (
+                  <> expiring on <b style={{ color: 'var(--accent-orange)' }}>{formatDate(deleteTarget.expiry)}</b></>
+                )}
+                {' '}({deleteTarget.quantity.toLocaleString()} units) from your inventory.
+                Other batches of this medication will <b>not</b> be affected.
               </p>
             </div>
             <div className="modal-footer">
