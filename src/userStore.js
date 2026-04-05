@@ -59,30 +59,27 @@ export async function registerUser({
     .maybeSingle();
   if (pCheck) return { ok: false, error: `Pharmacy ID "${pid}" is already registered.` };
 
-  // Create Supabase Auth user with real email
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email: email.trim().toLowerCase(),
-    password,
-  });
-  if (authError) return { ok: false, error: authError.message };
-
   const initials = name
     .split(' ').filter(Boolean).slice(0, 2)
     .map(w => w[0].toUpperCase()).join('');
 
-  // Create profile row (includes email for username→email lookup on login)
-  const { error: profileError } = await supabase.from('profiles').insert({
-    id:               authData.user.id,
-    username:         username.trim().toLowerCase(),
-    name:             name.trim(),
-    role:             role || 'Pharmacist',
-    initials,
-    email:            email.trim().toLowerCase(),
-    pharmacy_name:    pharmacyName.trim(),
-    pharmacy_address: (pharmacyAddress || '').trim(),
-    pharmacy_id:      pid,
+  // Create Supabase Auth user with real email + metadata (trigger creates profile row)
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email: email.trim().toLowerCase(),
+    password,
+    options: {
+      data: {
+        username:         username.trim().toLowerCase(),
+        name:             name.trim(),
+        role:             role || 'Pharmacist',
+        initials,
+        pharmacy_name:    pharmacyName.trim(),
+        pharmacy_address: (pharmacyAddress || '').trim(),
+        pharmacy_id:      pid,
+      },
+    },
   });
-  if (profileError) return { ok: false, error: profileError.message };
+  if (authError) return { ok: false, error: authError.message };
 
   const user = {
     id: authData.user.id,
@@ -99,28 +96,24 @@ export async function registerUser({
 }
 
 export async function loginUser(username, password) {
-  // Look up the user's real email by username
+  // Look up the user's full profile by username to avoid fetching it again later
   const { data: profile } = await supabase
     .from('profiles')
-    .select('email')
+    .select('*')
     .eq('username', username.trim().toLowerCase())
     .maybeSingle();
+    
   if (!profile?.email) return null;
 
+  // Sign in using the email we found
   const { data, error } = await supabase.auth.signInWithPassword({
     email: profile.email,
     password,
   });
+  
   if (error || !data?.user) return null;
 
-  const { data: fullProfile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', data.user.id)
-    .single();
-  if (!fullProfile) return null;
-
-  return profileToUser(fullProfile);
+  return profileToUser(profile);
 }
 
 export async function logoutUser() {
