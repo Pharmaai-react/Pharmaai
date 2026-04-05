@@ -34,7 +34,7 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
   const handleBarcodeInput = (val) => {
     setForm(prev => ({ ...prev, barcode: val }));
     if (!val || val.length < 8) { setBarcodeHint(false); return; }
-    const med = medicineDB.find(m => m.barcode === val.trim());
+    const med = (medicineDB || []).find(m => m.barcode === val.trim());
     if (med) {
       setForm(prev => ({ ...prev, name: med.name, category: med.category || '', price: med.price.toFixed(2), unit: med.unit || 'Tablet' }));
       setBarcodeHint(true);
@@ -43,7 +43,7 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
 
   const handleAddBarcode = useCallback((code) => {
     const trimmed = code.trim();
-    const med = medicineDB.find(m => m.barcode === trimmed || m.name.toLowerCase().includes(trimmed.toLowerCase()));
+    const med = (medicineDB || []).find(m => m.barcode === trimmed || m.name.toLowerCase().includes(trimmed.toLowerCase()));
     if (med) {
       setAddScannedMed(med);
       setScanStatus({ type: 'found', msg: '✅ Found: ' + med.name });
