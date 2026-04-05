@@ -47,6 +47,7 @@ export default function App() {
   const appNotif = useAppNotifications();
   const { unreadCount, processInventory, notifySale, notifyMedAdded, notifyMedUpdated, notifyReset, notifyInteractionCheck } = appNotif;
   const [openModal, setOpenModal] = useState(null); // 'add' | 'reorder' | 'receipt'
+  const [reorderSupplier, setReorderSupplier] = useState(''); // supplier name for the order form
   const [receiptData, setReceiptData] = useState(null);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [preloadSellItem, setPreloadSellItem] = useState(null); // item to pre-load in Sell
@@ -157,6 +158,12 @@ export default function App() {
     notifyReset();
   }, [showNotification, currentUser, notifyReset]);
 
+  // Delete a single medication from inventory
+  const handleDeleteItem = useCallback((itemName) => {
+    setInventory(prev => prev.filter(rec => rec.name !== itemName));
+    showNotification(`🗑️ ${itemName} removed from inventory`);
+  }, [showNotification]);
+
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
@@ -225,6 +232,7 @@ export default function App() {
               onExport={() => showNotification('Inventory exported to CSV')}
               onResetInventory={handleResetInventory}
               onUpdateItem={handleUpdateItem}
+              onDeleteItem={handleDeleteItem}
               onNavigate={setCurrentPage}
               onPreloadSell={(item) => setPreloadSellItem(item)}
             />
@@ -244,8 +252,12 @@ export default function App() {
           )}
           {currentPage === 'suppliers' && (
             <SuppliersPage
-              onOpenModal={setOpenModal}
+              onOpenModal={(modal, supplierName) => {
+                setReorderSupplier(supplierName || '');
+                setOpenModal(modal);
+              }}
               showNotification={showNotification}
+              currentUser={currentUser}
             />
           )}
           {currentPage === 'reports' && (
@@ -293,8 +305,15 @@ export default function App() {
       />
       <ReorderModal
         isOpen={openModal === 'reorder'}
-        onClose={() => setOpenModal(null)}
-        onPlace={() => { setOpenModal(null); showNotification('Order placed! Expected delivery in 24-48 hours.'); }}
+        onClose={() => { setOpenModal(null); setReorderSupplier(''); }}
+        onPlace={(orderData) => {
+          setOpenModal(null);
+          setReorderSupplier('');
+          showNotification(`✅ Order for ${orderData.medication} placed with ${orderData.supplier || 'supplier'}!`);
+        }}
+        supplierName={reorderSupplier}
+        suppliers={[]}
+        medicineList={inventoryData}
       />
       <ReceiptModal
         isOpen={openModal === 'receipt'}
