@@ -15,9 +15,10 @@ export default function LoginPage({ onLogin, onGoToSignUp }) {
     setLoading(true);
     setError('');
     try {
-      const success = await onLogin(username, password);
-      if (!success) {
-        setError('Invalid username or password. Please try again.');
+      const errorMsg = await onLogin(username, password);
+      // errorMsg is a string on failure, null on success
+      if (errorMsg) {
+        setError(errorMsg);
         setPassword('');
       }
     } finally {
