@@ -13,7 +13,7 @@ import { useNetworkAlerts } from './pharmacyNetwork.js';
 import { useNotification } from './useNotification.js';
 import LoginPage from './components/LoginPage.jsx';
 import SignUpPage from './components/SignUpPage.jsx';
-import Sidebar from './components/Sidebar.jsx';
+import Sidebar, { canAccess } from './components/Sidebar.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import InventoryPage from './components/InventoryPage.jsx';
 import PredictionsPage from './components/PredictionsPage.jsx';
@@ -89,9 +89,10 @@ export default function App() {
 
   const activateUser = useCallback((user) => {
     setCurrentUser(user);
-    // Load this pharmacy's inventory (isolated per username)
     setInventory(loadInventory(user.username));
-    setCurrentPage('dashboard');
+    // Redirect restricted roles to their first allowed page
+    const defaultPage = canAccess(user.role, 'dashboard') ? 'dashboard' : 'inventory';
+    setCurrentPage(defaultPage);
     setAuthState(AUTH_STATES.DASHBOARD);
   }, []);
 
@@ -219,7 +220,7 @@ export default function App() {
           onToggleProfile={() => setProfileDropdownOpen(p => !p)}
         />
         <main className="main-content">
-          {currentPage === 'dashboard' && (
+          {currentPage === 'dashboard' && canAccess(currentUser?.role, 'dashboard') && (
             <Dashboard
               user={currentUser}
               inventoryData={inventoryData}
@@ -240,8 +241,8 @@ export default function App() {
               onPreloadSell={(item) => setPreloadSellItem(item)}
             />
           )}
-          {currentPage === 'predictions' && <PredictionsPage inventoryData={inventoryData} />}
-          {currentPage === 'interactions' && <InteractionsPage onInteractionChecked={notifyInteractionCheck} />}
+          {currentPage === 'predictions' && canAccess(currentUser?.role, 'predictions') && <PredictionsPage inventoryData={inventoryData} />}
+          {currentPage === 'interactions' && canAccess(currentUser?.role, 'interactions') && <InteractionsPage onInteractionChecked={notifyInteractionCheck} />}
           {currentPage === 'sell' && (
             <SellPage
               medicineDB={medicineDB}
@@ -253,7 +254,7 @@ export default function App() {
               onPreloadConsumed={() => setPreloadSellItem(null)}
             />
           )}
-          {currentPage === 'suppliers' && (
+          {currentPage === 'suppliers' && canAccess(currentUser?.role, 'suppliers') && (
             <SuppliersPage
               onOpenModal={(modal, supplierName) => {
                 setReorderSupplier(supplierName || '');
@@ -263,13 +264,13 @@ export default function App() {
               currentUser={currentUser}
             />
           )}
-          {currentPage === 'reports' && (
+          {currentPage === 'reports' && canAccess(currentUser?.role, 'reports') && (
             <ReportsPage
               inventoryData={inventoryData}
               showNotification={showNotification}
             />
           )}
-          {currentPage === 'settings' && (
+          {currentPage === 'settings' && canAccess(currentUser?.role, 'settings') && (
             <SettingsPage
               user={currentUser}
               onLogout={handleLogout}
@@ -278,7 +279,7 @@ export default function App() {
               onToggleDark={toggleDarkMode}
             />
           )}
-          {currentPage === 'notifications' && (
+          {currentPage === 'notifications' && canAccess(currentUser?.role, 'notifications') && (
             <NotificationsPage
               notifications={appNotif.notifications}
               onMarkRead={appNotif.markRead}
