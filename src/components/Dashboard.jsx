@@ -185,6 +185,8 @@ export default function Dashboard({ user, inventoryData, onNavigate, onOpenModal
     i.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const isEmpty = inventoryData.length === 0;
+
   return (
     <>
       <header className="header">
@@ -213,161 +215,206 @@ export default function Dashboard({ user, inventoryData, onNavigate, onOpenModal
         </div>
       </header>
 
-      <div className="stats-grid">
-        <StatCard
-          iconClass="teal" icon={<BoxIcon size={20} />}
-          trend={`${realStats.totalMeds} types`} trendClass="up"
-          value={displayStats.totalMeds.toLocaleString()} label="Medication Types"
-          onClick={() => onNavigate('inventory')}
-        />
-        <StatCard
-          iconClass="blue" icon={<HeartbeatIcon size={20} />}
-          trend="Live data" trendClass="up"
-          value={displayStats.totalUnits.toLocaleString()} label="Total Units in Stock"
-          onClick={() => onNavigate('inventory')}
-        />
-        <StatCard
-          iconClass="orange" icon={<WarningIcon size={20} />}
-          trend={realStats.lowStock > 0 ? 'Needs attention' : 'All good'} trendClass={realStats.lowStock > 0 ? 'down' : 'up'}
-          value={displayStats.lowStock.toLocaleString()} label="Low / Critical Items"
-          onClick={() => onNavigate('inventory')}
-        />
-        <StatCard
-          iconClass="purple" icon={<ClockIcon />}
-          trend={realStats.expiringSoon > 0 ? 'Action needed' : 'All clear'} trendClass={realStats.expiringSoon > 0 ? 'down' : 'up'}
-          value={displayStats.expiringSoon.toLocaleString()} label="Expiring in 30 Days"
-          onClick={() => onNavigate('notifications')}
-        />
-      </div>
-
-      <div className="alerts-grid">
-        {criticalItem ? (
-          <div className="alert-card">
-            <div className="alert-icon critical"><WarningIcon size={20} /></div>
-            <div className="alert-content">
-              <h4>Critical Stock Alert</h4>
-              <p>{criticalItem.name} is below critical threshold. Only {criticalItem.quantity.toLocaleString()} units remaining.</p>
-              <button className="alert-action" onClick={() => onOpenModal('reorder')}>
-                Reorder Now <ArrowRightIcon size={12} />
-              </button>
-            </div>
+      {/* ── Empty state for brand-new pharmacies ── */}
+      {isEmpty && (
+        <div className="dashboard-empty-state">
+          <div className="dashboard-empty-icon">🏥</div>
+          <h2>Welcome to your new pharmacy!</h2>
+          <p>
+            Your inventory is currently empty. Start by adding your first medications
+            to unlock the full dashboard, analytics, and reporting features.
+          </p>
+          <div className="dashboard-empty-actions">
+            <button className="btn btn-primary" style={{ fontSize: 15, padding: '12px 28px' }} onClick={() => onOpenModal('add')}>
+              + Add First Medication
+            </button>
+            <button className="btn btn-secondary" style={{ fontSize: 15, padding: '12px 28px' }} onClick={() => onNavigate('inventory')}>
+              Go to Inventory
+            </button>
           </div>
-        ) : (
-          <div className="alert-card alert-card-ok">
-            <div className="alert-icon alert-icon-ok"><CheckIcon size={20} /></div>
-            <div className="alert-content">
-              <h4>All Stock Levels Healthy</h4>
-              <p>No critical stock alerts. All medications are above minimum thresholds.</p>
-              <button className="alert-action alert-action-ok" onClick={() => onNavigate('inventory')}>
-                View Inventory <ArrowRightIcon size={12} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {expiringItem ? (
-          <div className="alert-card">
-            <div className="alert-icon warning"><InfoIcon size={20} /></div>
-            <div className="alert-content">
-              <h4>Expiry Warning</h4>
-              <p>
-                {expiringItem.name} expires in {daysToExpiry(expiringItem.expiry)} day{daysToExpiry(expiringItem.expiry) !== 1 ? 's' : ''}.{' '}
-                {expiringItem.quantity.toLocaleString()} units in stock.
-              </p>
-              <button className="alert-action" onClick={() => onNavigate('inventory')}>
-                View Details <ArrowRightIcon size={12} />
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="alert-card alert-card-ok">
-            <div className="alert-icon alert-icon-ok"><CheckIcon size={20} /></div>
-            <div className="alert-content">
-              <h4>No Expiry Alerts</h4>
-              <p>No medications expiring soon. All batches are well within date.</p>
-              <button className="alert-action alert-action-ok" onClick={() => onNavigate('inventory')}>
-                View Inventory <ArrowRightIcon size={12} />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="main-grid">
-        <InventoryChart />
-        <div className="card ai-panel">
-          <div className="ai-header">
-            <div className="ai-badge"><BoltIcon size={12} /> AI Insights</div>
-          </div>
-          <div className="insight-list">
-            <div className="insight-item" onClick={() => onNavigate('predictions')}>
-              <div className="insight-icon alert"><WarningIcon size={16} /></div>
-              <div className="insight-content">
-                <h4>Stock Prediction</h4>
-                <p>Metformin demand expected to increase 23% next week.</p>
-                <div className="insight-time">2 min ago</div>
+          <div className="dashboard-empty-tips">
+            <div className="tip-card">
+              <span className="tip-icon">📦</span>
+              <div>
+                <strong>Add medications</strong>
+                <p>Use the Inventory page or the button above to add your stock.</p>
               </div>
             </div>
-            <div className="insight-item" onClick={() => onNavigate('notifications')}>
-              <div className="insight-icon warning"><ClockIcon size={16} /></div>
-              <div className="insight-content">
-                <h4>Expiry Alert</h4>
+            <div className="tip-card">
+              <span className="tip-icon">🛒</span>
+              <div>
+                <strong>Sell medicines</strong>
+                <p>Once stock is added, use Sell Medicines to process transactions.</p>
+              </div>
+            </div>
+            <div className="tip-card">
+              <span className="tip-icon">📊</span>
+              <div>
+                <strong>Live analytics</strong>
+                <p>Charts and alerts appear automatically as your inventory grows.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isEmpty && <>
+        <div className="stats-grid">
+          <StatCard
+            iconClass="teal" icon={<BoxIcon size={20} />}
+            trend={`${realStats.totalMeds} types`} trendClass="up"
+            value={displayStats.totalMeds.toLocaleString()} label="Medication Types"
+            onClick={() => onNavigate('inventory')}
+          />
+          <StatCard
+            iconClass="blue" icon={<HeartbeatIcon size={20} />}
+            trend="Live data" trendClass="up"
+            value={displayStats.totalUnits.toLocaleString()} label="Total Units in Stock"
+            onClick={() => onNavigate('inventory')}
+          />
+          <StatCard
+            iconClass="orange" icon={<WarningIcon size={20} />}
+            trend={realStats.lowStock > 0 ? 'Needs attention' : 'All good'} trendClass={realStats.lowStock > 0 ? 'down' : 'up'}
+            value={displayStats.lowStock.toLocaleString()} label="Low / Critical Items"
+            onClick={() => onNavigate('inventory')}
+          />
+          <StatCard
+            iconClass="purple" icon={<ClockIcon />}
+            trend={realStats.expiringSoon > 0 ? 'Action needed' : 'All clear'} trendClass={realStats.expiringSoon > 0 ? 'down' : 'up'}
+            value={displayStats.expiringSoon.toLocaleString()} label="Expiring in 30 Days"
+            onClick={() => onNavigate('notifications')}
+          />
+        </div>
+
+        <div className="alerts-grid">
+          {criticalItem ? (
+            <div className="alert-card">
+              <div className="alert-icon critical"><WarningIcon size={20} /></div>
+              <div className="alert-content">
+                <h4>Critical Stock Alert</h4>
+                <p>{criticalItem.name} is below critical threshold. Only {criticalItem.quantity.toLocaleString()} units remaining.</p>
+                <button className="alert-action" onClick={() => onOpenModal('reorder')}>
+                  Reorder Now <ArrowRightIcon size={12} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="alert-card alert-card-ok">
+              <div className="alert-icon alert-icon-ok"><CheckIcon size={20} /></div>
+              <div className="alert-content">
+                <h4>All Stock Levels Healthy</h4>
+                <p>No critical stock alerts. All medications are above minimum thresholds.</p>
+                <button className="alert-action alert-action-ok" onClick={() => onNavigate('inventory')}>
+                  View Inventory <ArrowRightIcon size={12} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {expiringItem ? (
+            <div className="alert-card">
+              <div className="alert-icon warning"><InfoIcon size={20} /></div>
+              <div className="alert-content">
+                <h4>Expiry Warning</h4>
                 <p>
-                  {expiringItem
-                    ? `${expiringItem.name} expires in ${daysToExpiry(expiringItem.expiry)} days.`
-                    : 'No critical expiry alerts at this time.'}
+                  {expiringItem.name} expires in {daysToExpiry(expiringItem.expiry)} day{daysToExpiry(expiringItem.expiry) !== 1 ? 's' : ''}.{' '}
+                  {expiringItem.quantity.toLocaleString()} units in stock.
                 </p>
-                <div className="insight-time">Just now</div>
+                <button className="alert-action" onClick={() => onNavigate('inventory')}>
+                  View Details <ArrowRightIcon size={12} />
+                </button>
               </div>
             </div>
-            <div className="insight-item" onClick={() => onNavigate('suppliers')}>
-              <div className="insight-icon success"><CheckIcon size={16} /></div>
-              <div className="insight-content">
-                <h4>Reorder Optimized</h4>
-                <p>Consolidating orders could save ₹2,340 this quarter.</p>
-                <div className="insight-time">1 hr ago</div>
+          ) : (
+            <div className="alert-card alert-card-ok">
+              <div className="alert-icon alert-icon-ok"><CheckIcon size={20} /></div>
+              <div className="alert-content">
+                <h4>No Expiry Alerts</h4>
+                <p>No medications expiring soon. All batches are well within date.</p>
+                <button className="alert-action alert-action-ok" onClick={() => onNavigate('inventory')}>
+                  View Inventory <ArrowRightIcon size={12} />
+                </button>
               </div>
             </div>
-          </div>
+          )}
         </div>
-      </div>
 
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">Current Inventory</h3>
-          <div className="card-actions">
-            <button className="btn btn-secondary" onClick={onExport}>Export</button>
-            <button className="btn btn-primary" onClick={() => onOpenModal('add')}>Add Medication</button>
+        <div className="main-grid">
+          <InventoryChart />
+          <div className="card ai-panel">
+            <div className="ai-header">
+              <div className="ai-badge"><BoltIcon size={12} /> AI Insights</div>
+            </div>
+            <div className="insight-list">
+              <div className="insight-item" onClick={() => onNavigate('predictions')}>
+                <div className="insight-icon alert"><WarningIcon size={16} /></div>
+                <div className="insight-content">
+                  <h4>Stock Prediction</h4>
+                  <p>Metformin demand expected to increase 23% next week.</p>
+                  <div className="insight-time">2 min ago</div>
+                </div>
+              </div>
+              <div className="insight-item" onClick={() => onNavigate('notifications')}>
+                <div className="insight-icon warning"><ClockIcon size={16} /></div>
+                <div className="insight-content">
+                  <h4>Expiry Alert</h4>
+                  <p>
+                    {expiringItem
+                      ? `${expiringItem.name} expires in ${daysToExpiry(expiringItem.expiry)} days.`
+                      : 'No critical expiry alerts at this time.'}
+                  </p>
+                  <div className="insight-time">Just now</div>
+                </div>
+              </div>
+              <div className="insight-item" onClick={() => onNavigate('suppliers')}>
+                <div className="insight-icon success"><CheckIcon size={16} /></div>
+                <div className="insight-content">
+                  <h4>Reorder Optimized</h4>
+                  <p>Consolidating orders could save ₹2,340 this quarter.</p>
+                  <div className="insight-time">1 hr ago</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="card-body" style={{ padding: 0 }}>
-          <table className="inventory-table">
-            <thead>
-              <tr>
-                <th>Medication</th><th>Stock Level</th><th>Quantity</th>
-                <th>Expiry</th><th>Status</th><th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredInventory.slice(0, 8).map((item, idx) => (
-                <InventoryRow key={idx} item={item} />
-              ))}
-            </tbody>
-          </table>
-          {filteredInventory.length > 8 && (
-            <div style={{ padding: '12px 20px', textAlign: 'center' }}>
-              <button className="btn btn-secondary" onClick={() => onNavigate('inventory')}>
-                View all {filteredInventory.length} medications →
-              </button>
+
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">Current Inventory</h3>
+            <div className="card-actions">
+              <button className="btn btn-secondary" onClick={onExport}>Export</button>
+              <button className="btn btn-primary" onClick={() => onOpenModal('add')}>Add Medication</button>
             </div>
-          )}
-          {filteredInventory.length === 0 && (
-            <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              No medications match your search.
-            </div>
-          )}
+          </div>
+          <div className="card-body" style={{ padding: 0 }}>
+            <table className="inventory-table">
+              <thead>
+                <tr>
+                  <th>Medication</th><th>Stock Level</th><th>Quantity</th>
+                  <th>Expiry</th><th>Status</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInventory.slice(0, 8).map((item, idx) => (
+                  <InventoryRow key={idx} item={item} />
+                ))}
+              </tbody>
+            </table>
+            {filteredInventory.length > 8 && (
+              <div style={{ padding: '12px 20px', textAlign: 'center' }}>
+                <button className="btn btn-secondary" onClick={() => onNavigate('inventory')}>
+                  View all {filteredInventory.length} medications →
+                </button>
+              </div>
+            )}
+            {filteredInventory.length === 0 && (
+              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No medications match your search.
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </>}
     </>
   );
 }
