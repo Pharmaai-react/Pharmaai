@@ -27,8 +27,9 @@ export default function SignUpPage({ onSignUp, onGoToLogin }) {
   useEffect(() => {
     if (form.username.length < 3) { setUsernameStatus(null); return; }
     setUsernameStatus('checking');
-    const t = setTimeout(() => {
-      setUsernameStatus(isUsernameAvailable(form.username) ? 'available' : 'taken');
+    const t = setTimeout(async () => {
+      const available = await isUsernameAvailable(form.username);
+      setUsernameStatus(available ? 'available' : 'taken');
     }, 400);
     return () => clearTimeout(t);
   }, [form.username]);
@@ -39,8 +40,9 @@ export default function SignUpPage({ onSignUp, onGoToLogin }) {
     if (!raw) { setPidStatus(null); return; }
     if (!/^[A-Z0-9]{1,10}$/.test(raw)) { setPidStatus('invalid'); return; }
     setPidStatus('checking');
-    const t = setTimeout(() => {
-      setPidStatus(isPharmacyIdAvailable(raw) ? 'available' : 'taken');
+    const t = setTimeout(async () => {
+      const available = await isPharmacyIdAvailable(raw);
+      setPidStatus(available ? 'available' : 'taken');
     }, 350);
     return () => clearTimeout(t);
   }, [form.pharmacyId]);
