@@ -103,7 +103,7 @@ export async function loginUser(username, password) {
     .eq('username', username.trim().toLowerCase())
     .maybeSingle();
     
-  if (!profile?.email) return null;
+  if (!profile?.email) return 'Invalid username or password.';
 
   // Sign in using the email we found
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -111,25 +111,32 @@ export async function loginUser(username, password) {
     password,
   });
   
-  if (error || !data?.user) return null;
+  if (error) return error.message;
+  if (!data?.user) return 'Unknown login error.';
 
-  return profileToUser(profile);
+  // Success. Let the onAuthStateChange in App.jsx handle the UI transition!
+  return null;
 }
 
 export async function logoutUser() {
   await supabase.auth.signOut();
 }
 
-export async function getCurrentUser() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) return null;
+export async function getCurrentUser(authUser = null) {
+  let uid = authUser?.id;
+  if (!uid) {
+    const { data: { session } } = await supabase.auth.getSession();
+    uid = session?.user?.id;
+  }
+  if (!uid) return null;
 
-  const { data: profile } = await supabase
+  const { data: profile, error } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', session.user.id)
+    .eq('id', uid)
     .single();
-  if (!profile) return null;
+    
+  if (error || !profile) return null;
 
   return profileToUser(profile);
 }
