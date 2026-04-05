@@ -8,7 +8,7 @@ import { supabase } from './supabase.js';
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function toEmail(username) {
-  return `${username.trim().toLowerCase()}@pharmaai.local`;
+  return `${username.trim().toLowerCase()}@pharmaai.app`;
 }
 
 function profileToUser(profile) {
