@@ -1,16 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Chart } from 'chart.js/auto';
 import { formatDate, formatStatus, CHART_DATA } from '../data.js';
 import { SearchIcon, BellIcon, WarningIcon, InfoIcon, BoltIcon, ArrowRightIcon, BoxIcon, HeartbeatIcon, CheckIcon, PillIcon, EditIcon } from '../Icons.jsx';
 
-function StatCard({ icon, iconClass, trend, trendClass, value, label, onClick, id }) {
+function StatCard({ icon, iconClass, trend, trendClass, value, label, onClick }) {
   return (
     <div className="stat-card" onClick={onClick}>
       <div className="stat-header">
         <div className={`stat-icon ${iconClass}`}>{icon}</div>
         <span className={`stat-trend ${trendClass}`}>{trend}</span>
       </div>
-      <div className="stat-value" id={id}>{value}</div>
+      <div className="stat-value">{value}</div>
       <div className="stat-label">{label}</div>
     </div>
   );
@@ -69,26 +69,26 @@ function InventoryChart() {
             borderColor: '#0d9488', backgroundColor: 'rgba(13,148,136,0.1)',
             borderWidth: 2, fill: true, tension: 0.4,
             pointBackgroundColor: '#0d9488', pointBorderColor: '#fff',
-            pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6
+            pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6,
           },
           {
             label: 'Received', data: data.received,
             borderColor: '#3b82f6', backgroundColor: 'transparent',
             borderWidth: 2, fill: false, tension: 0.4,
             pointBackgroundColor: '#3b82f6', pointBorderColor: '#fff',
-            pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6
-          }
-        ]
+            pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6,
+          },
+        ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: true, position: 'top', align: 'end', labels: { color: '#64748b', usePointStyle: true, padding: 20, font: { size: 12 } } } },
         scales: {
           x: { grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 11 } } },
-          y: { grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 11 } } }
+          y: { grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 11 } } },
         },
-        interaction: { intersect: false, mode: 'index' }
-      }
+        interaction: { intersect: false, mode: 'index' },
+      },
     });
     return () => { if (chartInstance.current) chartInstance.current.destroy(); };
   }, [activePeriod]);
@@ -112,30 +112,73 @@ function InventoryChart() {
   );
 }
 
+function ClockIcon({ size = 20 }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={size} height={size}>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+
 export default function Dashboard({ user, inventoryData, onNavigate, onOpenModal, onExport }) {
-  const [stats, setStats] = useState({ totalMedications: 0, monthlyDispensed: 0, lowStock: 0, expiringSoon: 0 });
+  const [displayStats, setDisplayStats] = useState({ totalMeds: 0, totalUnits: 0, lowStock: 0, expiringSoon: 0 });
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Animate stats on mount
+  // Compute real stats from live inventory
+  const realStats = useMemo(() => {
+    const now = new Date();
+    const in30 = new Date(now.getTime() + 30 * 86400000);
+    return {
+      totalMeds: inventoryData.length,
+      totalUnits: inventoryData.reduce((s, i) => s + (i.quantity || 0), 0),
+      lowStock: inventoryData.filter(i => i.status === 'critical' || i.status === 'low-stock').length,
+      expiringSoon: inventoryData.filter(i => {
+        if (!i.expiry) return false;
+        const d = new Date(i.expiry);
+        return d >= now && d <= in30;
+      }).length,
+    };
+  }, [inventoryData]);
+
+  // Find worst critical stock item
+  const criticalItem = useMemo(() =>
+    inventoryData.filter(i => i.status === 'critical').sort((a, b) => a.quantity - b.quantity)[0] || null,
+    [inventoryData]);
+
+  // Find soonest expiring item
+  const expiringItem = useMemo(() => {
+    const now = new Date();
+    return inventoryData
+      .filter(i => i.expiry && new Date(i.expiry) >= now)
+      .sort((a, b) => new Date(a.expiry) - new Date(b.expiry))[0] || null;
+  }, [inventoryData]);
+
+  // Animated counters targeting real values
   useEffect(() => {
-    const targets = { totalMedications: 2847, monthlyDispensed: 12459, lowStock: 23, expiringSoon: 18 };
     let frame;
     let start = null;
-    const duration = 1500;
-    const animate = (timestamp) => {
-      if (!start) start = timestamp;
-      const progress = Math.min((timestamp - start) / duration, 1);
-      setStats({
-        totalMedications: Math.floor(targets.totalMedications * progress),
-        monthlyDispensed: Math.floor(targets.monthlyDispensed * progress),
-        lowStock: Math.floor(targets.lowStock * progress),
-        expiringSoon: Math.floor(targets.expiringSoon * progress),
+    const duration = 1200;
+    const targets = realStats;
+    const animate = (ts) => {
+      if (!start) start = ts;
+      const ease = Math.min((ts - start) / duration, 1);
+      const t = 1 - Math.pow(1 - ease, 3);
+      setDisplayStats({
+        totalMeds:   Math.floor(targets.totalMeds * t),
+        totalUnits:  Math.floor(targets.totalUnits * t),
+        lowStock:    Math.floor(targets.lowStock * t),
+        expiringSoon: Math.floor(targets.expiringSoon * t),
       });
-      if (progress < 1) frame = requestAnimationFrame(animate);
+      if (ease < 1) frame = requestAnimationFrame(animate);
     };
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [realStats]);
+
+  function daysToExpiry(expiry) {
+    return Math.ceil((new Date(expiry) - new Date()) / 86400000);
+  }
 
   const filteredInventory = inventoryData.filter(i =>
     i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -147,14 +190,17 @@ export default function Dashboard({ user, inventoryData, onNavigate, onOpenModal
       <header className="header">
         <div className="header-left">
           <h1>Pharmacy Dashboard</h1>
-          <p>Welcome back, {user?.name}. Here&apos;s your inventory overview.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <p>Welcome back, {user?.name}. Live inventory overview.</p>
+            <span className="live-indicator"><span className="live-dot" />LIVE</span>
+          </div>
         </div>
         <div className="header-right">
           <div className="search-box">
             <SearchIcon size={16} />
             <input
               type="text"
-              placeholder="Search medications, suppliers..."
+              placeholder="Search medications..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
@@ -163,60 +209,88 @@ export default function Dashboard({ user, inventoryData, onNavigate, onOpenModal
             <BellIcon size={18} />
             <span className="notification-dot" />
           </button>
-          <button className="user-avatar" onClick={() => {}} title="User">
-            {user?.initials}
-          </button>
+          <button className="user-avatar" title="User">{user?.initials}</button>
         </div>
       </header>
 
       <div className="stats-grid">
         <StatCard
           iconClass="teal" icon={<BoxIcon size={20} />}
-          trend="+12%" trendClass="up"
-          value={stats.totalMedications.toLocaleString()} label="Total Medications"
+          trend={`${realStats.totalMeds} types`} trendClass="up"
+          value={displayStats.totalMeds.toLocaleString()} label="Medication Types"
           onClick={() => onNavigate('inventory')}
         />
         <StatCard
           iconClass="blue" icon={<HeartbeatIcon size={20} />}
-          trend="+8%" trendClass="up"
-          value={stats.monthlyDispensed.toLocaleString()} label="Dispensed This Month"
-          onClick={() => onNavigate('reports')}
+          trend="Live data" trendClass="up"
+          value={displayStats.totalUnits.toLocaleString()} label="Total Units in Stock"
+          onClick={() => onNavigate('inventory')}
         />
         <StatCard
           iconClass="orange" icon={<WarningIcon size={20} />}
-          trend="-3%" trendClass="down"
-          value={stats.lowStock.toLocaleString()} label="Low Stock Items"
+          trend={realStats.lowStock > 0 ? 'Needs attention' : 'All good'} trendClass={realStats.lowStock > 0 ? 'down' : 'up'}
+          value={displayStats.lowStock.toLocaleString()} label="Low / Critical Items"
           onClick={() => onNavigate('inventory')}
         />
         <StatCard
           iconClass="purple" icon={<ClockIcon />}
-          trend="+5%" trendClass="up"
-          value={stats.expiringSoon.toLocaleString()} label="Expiring in 30 Days"
+          trend={realStats.expiringSoon > 0 ? 'Action needed' : 'All clear'} trendClass={realStats.expiringSoon > 0 ? 'down' : 'up'}
+          value={displayStats.expiringSoon.toLocaleString()} label="Expiring in 30 Days"
           onClick={() => onNavigate('notifications')}
         />
       </div>
 
       <div className="alerts-grid">
-        <div className="alert-card">
-          <div className="alert-icon critical"><WarningIcon size={20} /></div>
-          <div className="alert-content">
-            <h4>Critical Stock Alert</h4>
-            <p>Insulin Glargine is below critical threshold. Only 45 units remaining.</p>
-            <button className="alert-action" onClick={() => onOpenModal('reorder')}>
-              Reorder Now <ArrowRightIcon size={12} />
-            </button>
+        {criticalItem ? (
+          <div className="alert-card">
+            <div className="alert-icon critical"><WarningIcon size={20} /></div>
+            <div className="alert-content">
+              <h4>Critical Stock Alert</h4>
+              <p>{criticalItem.name} is below critical threshold. Only {criticalItem.quantity.toLocaleString()} units remaining.</p>
+              <button className="alert-action" onClick={() => onOpenModal('reorder')}>
+                Reorder Now <ArrowRightIcon size={12} />
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="alert-card">
-          <div className="alert-icon warning"><InfoIcon size={20} /></div>
-          <div className="alert-content">
-            <h4>Expiry Warning</h4>
-            <p>Amoxicillin 500mg batch expires in 14 days. 230 units in stock.</p>
-            <button className="alert-action" onClick={() => onNavigate('inventory')}>
-              View Details <ArrowRightIcon size={12} />
-            </button>
+        ) : (
+          <div className="alert-card alert-card-ok">
+            <div className="alert-icon alert-icon-ok"><CheckIcon size={20} /></div>
+            <div className="alert-content">
+              <h4>All Stock Levels Healthy</h4>
+              <p>No critical stock alerts. All medications are above minimum thresholds.</p>
+              <button className="alert-action alert-action-ok" onClick={() => onNavigate('inventory')}>
+                View Inventory <ArrowRightIcon size={12} />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {expiringItem ? (
+          <div className="alert-card">
+            <div className="alert-icon warning"><InfoIcon size={20} /></div>
+            <div className="alert-content">
+              <h4>Expiry Warning</h4>
+              <p>
+                {expiringItem.name} expires in {daysToExpiry(expiringItem.expiry)} day{daysToExpiry(expiringItem.expiry) !== 1 ? 's' : ''}.{' '}
+                {expiringItem.quantity.toLocaleString()} units in stock.
+              </p>
+              <button className="alert-action" onClick={() => onNavigate('inventory')}>
+                View Details <ArrowRightIcon size={12} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="alert-card alert-card-ok">
+            <div className="alert-icon alert-icon-ok"><CheckIcon size={20} /></div>
+            <div className="alert-content">
+              <h4>No Expiry Alerts</h4>
+              <p>No medications expiring soon. All batches are well within date.</p>
+              <button className="alert-action alert-action-ok" onClick={() => onNavigate('inventory')}>
+                View Inventory <ArrowRightIcon size={12} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="main-grid">
@@ -238,15 +312,19 @@ export default function Dashboard({ user, inventoryData, onNavigate, onOpenModal
               <div className="insight-icon warning"><ClockIcon size={16} /></div>
               <div className="insight-content">
                 <h4>Expiry Alert</h4>
-                <p>Batch #B-4521 of Omeprazole expires in 7 days.</p>
-                <div className="insight-time">15 min ago</div>
+                <p>
+                  {expiringItem
+                    ? `${expiringItem.name} expires in ${daysToExpiry(expiringItem.expiry)} days.`
+                    : 'No critical expiry alerts at this time.'}
+                </p>
+                <div className="insight-time">Just now</div>
               </div>
             </div>
             <div className="insight-item" onClick={() => onNavigate('suppliers')}>
               <div className="insight-icon success"><CheckIcon size={16} /></div>
               <div className="insight-content">
                 <h4>Reorder Optimized</h4>
-                <p>Consolidating orders could save $2,340 this quarter.</p>
+                <p>Consolidating orders could save ₹2,340 this quarter.</p>
                 <div className="insight-time">1 hr ago</div>
               </div>
             </div>
@@ -266,31 +344,30 @@ export default function Dashboard({ user, inventoryData, onNavigate, onOpenModal
           <table className="inventory-table">
             <thead>
               <tr>
-                <th>Medication</th>
-                <th>Stock Level</th>
-                <th>Quantity</th>
-                <th>Expiry</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th>Medication</th><th>Stock Level</th><th>Quantity</th>
+                <th>Expiry</th><th>Status</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredInventory.map((item, idx) => (
+              {filteredInventory.slice(0, 8).map((item, idx) => (
                 <InventoryRow key={idx} item={item} />
               ))}
             </tbody>
           </table>
+          {filteredInventory.length > 8 && (
+            <div style={{ padding: '12px 20px', textAlign: 'center' }}>
+              <button className="btn btn-secondary" onClick={() => onNavigate('inventory')}>
+                View all {filteredInventory.length} medications →
+              </button>
+            </div>
+          )}
+          {filteredInventory.length === 0 && (
+            <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              No medications match your search.
+            </div>
+          )}
         </div>
       </div>
     </>
-  );
-}
-
-function ClockIcon({ size = 20 }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={size} height={size}>
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
   );
 }
