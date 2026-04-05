@@ -159,9 +159,12 @@ export default function App() {
   }, [showNotification, currentUser, notifyReset]);
 
   // Delete a single medication from inventory
-  const handleDeleteItem = useCallback((itemName) => {
-    setInventory(prev => prev.filter(rec => rec.name !== itemName));
-    showNotification(`🗑️ ${itemName} removed from inventory`);
+  const handleDeleteItem = useCallback((itemName, itemExpiry) => {
+    setInventory(prev => prev.filter(rec => {
+      // Remove only the exact batch: same name AND same expiry date
+      return !(rec.name === itemName && rec.expiry === itemExpiry);
+    }));
+    showNotification(`🗑️ ${itemName} (expiry: ${itemExpiry}) removed from inventory`);
   }, [showNotification]);
 
   // Close dropdown on outside click
