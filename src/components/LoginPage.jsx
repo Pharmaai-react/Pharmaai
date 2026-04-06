@@ -100,13 +100,6 @@ export default function LoginPage({ onLogin, onGoToSignUp }) {
         <button id="goto-signup-btn" className="signup-cta-btn" onClick={onGoToSignUp}>
           ✨ Create a New Pharmacy Account
         </button>
-
-        <div className="login-hint">
-          <strong>🔑 Demo Credentials</strong>
-          <span><b>Admin:</b> admin / admin123</span><br />
-          <span><b>Doctor:</b> doctor / pharma2024</span><br />
-          <span><b>Staff:</b> staff / staff123</span>
-        </div>
       </div>
     </div>
   );
