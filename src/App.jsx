@@ -32,6 +32,7 @@ import ReorderModal from './components/ReorderModal.jsx';
 import ReceiptModal from './components/ReceiptModal.jsx';
 import NetworkAlertPanel from './components/NetworkAlertPanel.jsx';
 import RoomPanel from './components/RoomPanel.jsx';
+import ReturnsPage from './components/ReturnsPage.jsx';
 
 // 'login' | 'signup' | 'dashboard'
 const AUTH_STATES = { LOGIN: 'login', SIGNUP: 'signup', DASHBOARD: 'dashboard' };
@@ -215,6 +216,24 @@ export default function App() {
     showNotification(`🗑️ ${itemName} removed from inventory`);
   }, [currentUser, showNotification]);
 
+  // Returns page: apply inventory increase/decrease after a return
+  const handleReturnInventoryUpdate = useCallback(async (changes) => {
+    for (const change of changes) {
+      const record = inventory.find(r =>
+        r._id === change._id ||
+        (r.name === change.name && r.expiry === change.expiry)
+      );
+      if (!record) continue;
+      const newQty = change.action === 'decrease'
+        ? Math.max(0, record.quantity - change.qty)
+        : record.quantity + change.qty;
+      await updateInventoryItem(record._id, { ...record, quantity: newQty });
+    }
+    const updated = await loadInventory(currentUser.id);
+    setInventory(updated);
+    showNotification('✅ Inventory updated after return');
+  }, [inventory, currentUser, showNotification]);
+
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
@@ -259,6 +278,7 @@ export default function App() {
     dashboard: 'Dashboard', inventory: 'Inventory', predictions: 'AI Predictions',
     interactions: 'Drug Interactions', sell: 'Sell Medicines', suppliers: 'Suppliers',
     reports: 'Reports', settings: 'Settings', notifications: 'Notifications',
+    returns: 'Returns',
   };
 
   return (
@@ -372,6 +392,14 @@ export default function App() {
               onMarkRead={appNotif.markRead}
               onMarkAllRead={() => { appNotif.markAllRead(); showNotification('All notifications marked as read.'); }}
               onNavigate={setCurrentPage}
+            />
+          )}
+          {currentPage === 'returns' && canAccess(currentUser?.role, 'returns') && (
+            <ReturnsPage
+              inventoryData={inventoryData}
+              showNotification={showNotification}
+              currentUser={currentUser}
+              onInventoryUpdate={handleReturnInventoryUpdate}
             />
           )}
         </main>
