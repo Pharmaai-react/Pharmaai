@@ -1,4 +1,4 @@
-import { PharmacyIcon, BoxIcon, TrendIcon, InfoIcon, ShoppingIcon, UsersIcon, FileTextIcon, SettingsIcon, BellIcon, LogoutIcon } from '../Icons.jsx';
+import { PharmacyIcon, BoxIcon, TrendIcon, InfoIcon, ShoppingIcon, UsersIcon, FileTextIcon, SettingsIcon, BellIcon, LogoutIcon, ReturnIcon } from '../Icons.jsx';
 
 // ── Role-based access control ────────────────────────────────────────────────
 export const ROLE_ALLOWED_PAGES = {
@@ -20,6 +20,7 @@ const navItems = [
   { id: 'predictions',   label: 'AI Predictions',    section: 'Main Menu',   icon: <TrendIcon size={18} /> },
   { id: 'interactions',  label: 'Drug Interactions', section: 'Main Menu',   icon: <InfoIcon size={18} /> },
   { id: 'sell',          label: 'Sell Medicines',    section: 'Main Menu',   isSell: true, icon: <ShoppingIcon size={18} /> },
+  { id: 'returns',       label: 'Returns',           section: 'Management',  icon: <ReturnIcon size={18} /> },
   { id: 'suppliers',     label: 'Suppliers',         section: 'Management',  icon: <UsersIcon size={18} /> },
   { id: 'reports',       label: 'Reports',           section: 'Management',  icon: <FileTextIcon size={18} /> },
   { id: 'settings',      label: 'Settings',          section: 'Management',  icon: <SettingsIcon size={18} /> },
