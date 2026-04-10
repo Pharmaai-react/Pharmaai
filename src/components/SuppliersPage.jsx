@@ -2,28 +2,26 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase.js';
 
 const EMOJI_OPTIONS = ['💊', '🏥', '🧪', '🌿', '⚗️', '🔬', '💉', '🩺', '🧬', '📦', '🏭', '🔭'];
-const BG_OPTIONS = [
+const COLOR_OPTIONS = [
   '#dbeafe', '#fef3c7', '#ede9fe', '#ccfbf1',
   '#fee2e2', '#e0f2fe', '#dcfce7', '#fce7f3',
 ];
 
 const SEED_SUPPLIERS = [
-  { id: 1, emoji: '💊', bg: '#dbeafe', name: 'MedSupply Co.', city: 'Mumbai', country: 'India', since: 2018, tags: ['Best Price', 'Verified'], orders: 142, rating: '4.8', contactName: 'Amit Sharma', phone: '+91 98765 43210', email: 'amit@medsupply.in', notes: '' },
-  { id: 2, emoji: '🏥', bg: '#fef3c7', name: 'PharmaDist Inc.', city: 'Delhi', country: 'India', since: 2015, tags: ['Fast Delivery', 'Trusted'], orders: 98, rating: '4.6', contactName: 'Priya Patel', phone: '+91 87654 32109', email: 'priya@pharmadist.in', notes: '' },
-  { id: 3, emoji: '🧪', bg: '#ede9fe', name: 'HealthWare LLC', city: 'Bangalore', country: 'India', since: 2020, tags: ['New', 'Affordable'], orders: 34, rating: '4.3', contactName: 'Ravi Kumar', phone: '+91 76543 21098', email: 'ravi@healthware.in', notes: '' },
-  { id: 4, emoji: '🌿', bg: '#ccfbf1', name: 'BioPharm Solutions', city: 'Chennai', country: 'India', since: 2016, tags: ['Biologics', 'GMP Cert'], orders: 67, rating: '4.7', contactName: 'Sunita Rao', phone: '+91 65432 10987', email: 'sunita@biopharm.in', notes: '' },
-  { id: 5, emoji: '⚗️', bg: '#fee2e2', name: 'GenericMed Corp', city: 'Hyderabad', country: 'India', since: 2012, tags: ['Generics', 'Bulk'], orders: 210, rating: '4.5', contactName: 'Mohan Reddy', phone: '+91 54321 09876', email: 'mohan@genericmed.in', notes: '' },
-  { id: 6, emoji: '🔬', bg: '#e0f2fe', name: 'ClinicalPlus India', city: 'Pune', country: 'India', since: 2019, tags: ['Premium', 'ISO Cert'], orders: 51, rating: '4.9', contactName: 'Anita Desai', phone: '+91 43210 98765', email: 'anita@clinicalplus.in', notes: '' },
+  { emoji: '💊', color: '#dbeafe', name: 'MedSupply Co.',      contact: 'Amit Sharma',  phone: '+91 98765 43210', email: 'amit@medsupply.in',     address: 'Mumbai, India',     orders: 142, rating: 4.8 },
+  { emoji: '🏥', color: '#fef3c7', name: 'PharmaDist Inc.',    contact: 'Priya Patel',  phone: '+91 87654 32109', email: 'priya@pharmadist.in',   address: 'Delhi, India',      orders: 98,  rating: 4.6 },
+  { emoji: '🧪', color: '#ede9fe', name: 'HealthWare LLC',     contact: 'Ravi Kumar',   phone: '+91 76543 21098', email: 'ravi@healthware.in',    address: 'Bangalore, India',  orders: 34,  rating: 4.3 },
+  { emoji: '🌿', color: '#ccfbf1', name: 'BioPharm Solutions', contact: 'Sunita Rao',   phone: '+91 65432 10987', email: 'sunita@biopharm.in',    address: 'Chennai, India',    orders: 67,  rating: 4.7 },
+  { emoji: '⚗️', color: '#fee2e2', name: 'GenericMed Corp',    contact: 'Mohan Reddy',  phone: '+91 54321 09876', email: 'mohan@genericmed.in',   address: 'Hyderabad, India',  orders: 210, rating: 4.5 },
+  { emoji: '🔬', color: '#e0f2fe', name: 'ClinicalPlus India', contact: 'Anita Desai',  phone: '+91 43210 98765', email: 'anita@clinicalplus.in', address: 'Pune, India',       orders: 51,  rating: 4.9 },
 ];
 
 const EMPTY_FORM = {
-  emoji: '💊', bg: '#dbeafe', name: '', city: '', country: 'India',
-  since: new Date().getFullYear(), tags: '', contactName: '',
-  phone: '', email: '', notes: '', rating: '5.0',
+  emoji: '💊', color: '#dbeafe',
+  name: '', contact: '', phone: '', email: '', address: '', rating: '5.0',
 };
 
-
-// ── Icons ────────────────────────────────────────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────────
 function IconEdit() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>;
 }
@@ -39,136 +37,137 @@ function IconPhone() {
 function IconMail() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>;
 }
+function IconMapPin() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>;
+}
 function IconSearch() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>;
 }
 
-// ── Main Component ───────────────────────────────────────────────────────────
+// ── Main Component ─────────────────────────────────────────────────────────────
 export default function SuppliersPage({ onOpenModal, showNotification, currentUser }) {
   const [suppliers, setSuppliers] = useState([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch]       = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [editingId, setEditingId]   = useState(null);
+  const [form, setForm]             = useState(EMPTY_FORM);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [loading, setLoading]       = useState(true);
 
-  // Map Supabase row → app shape (fixes contact_name / color column names)
-  function rowToSupplier(row) {
-    return {
-      ...row,
-      contactName: row.contact_name ?? row.contactName ?? '',
-      bg: row.color ?? row.bg ?? '#dbeafe',
-    };
-  }
-
-  // Load suppliers from Supabase; seed with defaults on first use
+  // ── Load from Supabase; seed default suppliers on first use ──────────────
   useEffect(() => {
     if (!currentUser?.id) return;
-    supabase
-      .from('suppliers')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .order('created_at')
-      .then(async ({ data, error }) => {
-        if (error) {
-          // Table may not exist yet — show seed data locally so page isn't blank
-          console.warn('[suppliers] load error:', error.message);
-          setSuppliers(SEED_SUPPLIERS);
-          return;
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at');
+
+      if (error) {
+        console.warn('[suppliers] load error:', error.message);
+        showNotification('⚠️ Could not load suppliers: ' + error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        // Seed default suppliers on first login
+        const seeds = SEED_SUPPLIERS.map(s => ({ user_id: currentUser.id, ...s }));
+        const { data: seeded, error: seedErr } = await supabase
+          .from('suppliers').insert(seeds).select();
+        if (seedErr) {
+          console.warn('[suppliers] seed error:', seedErr.message);
         }
-        if (!data || data.length === 0) {
-          // First time: seed default suppliers into Supabase
-          const seeds = SEED_SUPPLIERS.map(s => ({
-            user_id: currentUser.id,
-            name: s.name, city: s.city, country: s.country,
-            since: s.since, tags: s.tags,
-            contact_name: s.contactName,
-            phone: s.phone, email: s.email, notes: s.notes,
-            rating: parseFloat(s.rating) || 5.0,
-            orders: s.orders || 0,
-            emoji: s.emoji, color: s.bg,
-          }));
-          const { data: seeded } = await supabase
-            .from('suppliers').insert(seeds).select();
-          setSuppliers((seeded || []).map(rowToSupplier));
-        } else {
-          setSuppliers(data.map(rowToSupplier));
-        }
-      });
+        setSuppliers(seeded || []);
+      } else {
+        setSuppliers(data);
+      }
+      setLoading(false);
+    })();
   }, [currentUser?.id]);
 
   const filtered = suppliers.filter(s =>
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    s.city.toLowerCase().includes(search.toLowerCase()) ||
-    (s.tags || []).some(t => t.toLowerCase().includes(search.toLowerCase()))
+    s.name?.toLowerCase().includes(search.toLowerCase()) ||
+    s.address?.toLowerCase().includes(search.toLowerCase()) ||
+    s.contact?.toLowerCase().includes(search.toLowerCase())
   );
 
   const totalOrders = suppliers.reduce((sum, s) => sum + (s.orders || 0), 0);
-  const avgRating = suppliers.length
+  const avgRating   = suppliers.length
     ? (suppliers.reduce((sum, s) => sum + parseFloat(s.rating || 0), 0) / suppliers.length).toFixed(1)
     : '0.0';
 
+  // ── Drawer helpers ─────────────────────────────────────────────────────────
   function openAdd() { setForm(EMPTY_FORM); setEditingId(null); setDrawerOpen(true); }
   function openEdit(s) {
-    setForm({ ...s, tags: (s.tags || []).join(', ') });
+    setForm({
+      emoji:   s.emoji   || '💊',
+      color:   s.color   || '#dbeafe',
+      name:    s.name    || '',
+      contact: s.contact || '',
+      phone:   s.phone   || '',
+      email:   s.email   || '',
+      address: s.address || '',
+      rating:  String(s.rating ?? '5.0'),
+    });
     setEditingId(s.id);
     setDrawerOpen(true);
   }
   function closeDrawer() { setDrawerOpen(false); setEditingId(null); setForm(EMPTY_FORM); }
-
   function handleChange(e) {
     const { name, value } = e.target;
     setForm(f => ({ ...f, [name]: value }));
   }
 
+  // ── Submit (add / update) ──────────────────────────────────────────────────
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.name.trim() || !form.city.trim()) {
-      showNotification('⚠️ Supplier name and city are required.');
+    if (!form.name.trim()) {
+      showNotification('⚠️ Supplier name is required.');
       return;
     }
-    const tagsArr = form.tags.split(',').map(t => t.trim()).filter(Boolean);
+
+    const payload = {
+      name:    form.name.trim(),
+      contact: form.contact.trim(),
+      phone:   form.phone.trim(),
+      email:   form.email.trim(),
+      address: form.address.trim(),
+      rating:  parseFloat(form.rating) || 5.0,
+      emoji:   form.emoji,
+      color:   form.color,
+    };
+
     if (editingId !== null) {
-      const { error } = await supabase.from('suppliers').update({
-        name: form.name, city: form.city, country: form.country,
-        since: form.since, tags: tagsArr, contact_name: form.contactName,
-        phone: form.phone, email: form.email, notes: form.notes,
-        rating: parseFloat(form.rating) || 5.0, emoji: form.emoji, color: form.bg,
-      }).eq('id', editingId);
+      const { error } = await supabase.from('suppliers').update(payload).eq('id', editingId);
       if (error) { showNotification('❌ Update failed: ' + error.message); return; }
-      setSuppliers(prev => prev.map(s =>
-        s.id === editingId
-          ? { ...s, ...form, tags: tagsArr, contactName: form.contactName, bg: form.bg }
-          : s
-      ));
+      setSuppliers(prev => prev.map(s => s.id === editingId ? { ...s, ...payload } : s));
       showNotification(`✅ ${form.name} updated!`);
     } else {
       const { data, error } = await supabase
         .from('suppliers')
-        .insert({
-          user_id: currentUser.id,
-          name: form.name, city: form.city, country: form.country,
-          since: form.since, tags: tagsArr, contact_name: form.contactName,
-          phone: form.phone, email: form.email, notes: form.notes,
-          rating: parseFloat(form.rating) || 5.0,
-          orders: 0, emoji: form.emoji, color: form.bg,
-        })
+        .insert({ user_id: currentUser.id, ...payload, orders: 0 })
         .select().single();
       if (error) { showNotification('❌ Add failed: ' + error.message); return; }
-      if (data) setSuppliers(prev => [rowToSupplier(data), ...prev]);
-      showNotification(`✅ ${form.name} added to suppliers!`);
+      if (data) setSuppliers(prev => [data, ...prev]);
+      showNotification(`✅ ${form.name} added!`);
     }
     closeDrawer();
   }
 
+  // ── Delete ─────────────────────────────────────────────────────────────────
   async function handleDelete(id) {
     const name = suppliers.find(s => s.id === id)?.name;
-    await supabase.from('suppliers').delete().eq('id', id);
+    const { error } = await supabase.from('suppliers').delete().eq('id', id);
+    if (error) { showNotification('❌ Delete failed: ' + error.message); return; }
     setSuppliers(prev => prev.filter(s => s.id !== id));
     setDeleteConfirm(null);
     showNotification(`🗑️ ${name} removed.`);
   }
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       <header className="header">
@@ -200,15 +199,20 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
           <input
             className="supplier-search-input"
             type="text"
-            placeholder="Search by name, city, tag..."
+            placeholder="Search by name, address, contact..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
       </div>
 
-      {/* Grid / Empty state */}
-      {filtered.length === 0 ? (
+      {/* Grid / Empty / Loading */}
+      {loading ? (
+        <div className="supplier-empty">
+          <div style={{ fontSize: 36, marginBottom: 10 }}>⏳</div>
+          <h3>Loading suppliers...</h3>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="supplier-empty">
           <div className="supplier-empty-icon">🔍</div>
           <h3>No suppliers found</h3>
@@ -220,28 +224,28 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
           {filtered.map(s => (
             <div key={s.id} className="supplier-card">
               <div className="supplier-card-top">
-                <div className="supplier-logo" style={{ background: s.bg || s.color || '#dbeafe' }}>{s.emoji || '💊'}</div>
+                <div className="supplier-logo" style={{ background: s.color || '#dbeafe' }}>
+                  {s.emoji || '💊'}
+                </div>
                 <div className="supplier-card-actions">
                   <button className="supplier-icon-btn" title="Edit" onClick={() => openEdit(s)}><IconEdit /></button>
                   <button className="supplier-icon-btn danger" title="Delete" onClick={() => setDeleteConfirm(s.id)}><IconTrash /></button>
                 </div>
               </div>
+
               <div className="supplier-name">{s.name}</div>
-              <div className="supplier-meta">{s.city}, {s.country} · Since {s.since}</div>
-              <div style={{ marginBottom: 10 }}>
-                {(s.tags || []).map(t => <span key={t} className="supplier-tag">{t}</span>)}
+
+              {/* Contact details */}
+              <div className="supplier-contact-info" style={{ marginTop: 8 }}>
+                {s.contact && <div className="contact-row"><IconUser /> {s.contact}</div>}
+                {s.phone   && <div className="contact-row"><IconPhone /> {s.phone}</div>}
+                {s.email   && <div className="contact-row"><IconMail /> {s.email}</div>}
+                {s.address && <div className="contact-row"><IconMapPin /> {s.address}</div>}
               </div>
-              {(s.contactName || s.contact_name) && (
-                <div className="supplier-contact-info">
-                  <div className="contact-row"><IconUser /> {s.contactName || s.contact_name}</div>
-                  {s.phone && <div className="contact-row"><IconPhone /> {s.phone}</div>}
-                  {s.email && <div className="contact-row"><IconMail /> {s.email}</div>}
-                </div>
-              )}
-              {s.notes && <div className="supplier-notes">{s.notes}</div>}
-              <div className="supplier-stat">
-                <span>Orders: <b>{s.orders}</b></span>
-                <span>Rating: <b>⭐ {s.rating}</b></span>
+
+              <div className="supplier-stat" style={{ marginTop: 12 }}>
+                <span>Orders: <b>{s.orders ?? 0}</b></span>
+                <span>Rating: <b>⭐ {s.rating ?? '—'}</b></span>
                 <span>
                   <button
                     className="btn btn-primary"
@@ -294,18 +298,18 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
                     <button
                       type="button" key={em}
                       className={`emoji-opt${form.emoji === em ? ' selected' : ''}`}
-                      style={{ background: form.bg }}
+                      style={{ background: form.color }}
                       onClick={() => setForm(f => ({ ...f, emoji: em }))}
                     >{em}</button>
                   ))}
                 </div>
                 <div className="color-options">
-                  {BG_OPTIONS.map(bg => (
+                  {COLOR_OPTIONS.map(c => (
                     <button
-                      type="button" key={bg}
-                      className={`color-opt${form.bg === bg ? ' selected' : ''}`}
-                      style={{ background: bg }}
-                      onClick={() => setForm(f => ({ ...f, bg }))}
+                      type="button" key={c}
+                      className={`color-opt${form.color === c ? ' selected' : ''}`}
+                      style={{ background: c }}
+                      onClick={() => setForm(f => ({ ...f, color: c }))}
                     />
                   ))}
                 </div>
@@ -313,27 +317,13 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
 
               {/* Supplier details */}
               <div className="drawer-section-title">Supplier Details</div>
-              <div className="drawer-form-grid">
-                <div className="form-group">
-                  <label className="form-label">Supplier Name *</label>
-                  <input className="form-input" name="name" value={form.name} onChange={handleChange} placeholder="e.g. MedSupply Co." required />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Since Year</label>
-                  <input className="form-input" name="since" type="number" min="1900" max={new Date().getFullYear()} value={form.since} onChange={handleChange} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">City *</label>
-                  <input className="form-input" name="city" value={form.city} onChange={handleChange} placeholder="e.g. Mumbai" required />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Country</label>
-                  <input className="form-input" name="country" value={form.country} onChange={handleChange} placeholder="e.g. India" />
-                </div>
+              <div className="form-group">
+                <label className="form-label">Supplier Name <span style={{ color: '#ef4444' }}>*</span></label>
+                <input className="form-input" name="name" value={form.name} onChange={handleChange} placeholder="e.g. MedSupply Co." required />
               </div>
               <div className="form-group">
-                <label className="form-label">Tags / Specialties <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(comma-separated)</span></label>
-                <input className="form-input" name="tags" value={form.tags} onChange={handleChange} placeholder="e.g. Verified, Fast Delivery, Generics" />
+                <label className="form-label">Address / Location</label>
+                <input className="form-input" name="address" value={form.address} onChange={handleChange} placeholder="e.g. Mumbai, India" />
               </div>
 
               {/* Contact info */}
@@ -341,7 +331,7 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
               <div className="drawer-form-grid">
                 <div className="form-group">
                   <label className="form-label">Contact Person</label>
-                  <input className="form-input" name="contactName" value={form.contactName} onChange={handleChange} placeholder="e.g. Amit Sharma" />
+                  <input className="form-input" name="contact" value={form.contact} onChange={handleChange} placeholder="e.g. Amit Sharma" />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Phone</label>
@@ -355,10 +345,6 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
               <div className="form-group">
                 <label className="form-label">Rating (out of 5)</label>
                 <input className="form-input" name="rating" type="number" step="0.1" min="0" max="5" value={form.rating} onChange={handleChange} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Notes</label>
-                <textarea className="form-input" name="notes" value={form.notes} onChange={handleChange} rows={3} placeholder="Additional notes..." style={{ resize: 'vertical' }} />
               </div>
 
               <div className="supplier-drawer-footer">
