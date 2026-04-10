@@ -1,78 +1,103 @@
 import { useState } from 'react';
 import { BoltIcon, CloseIcon } from '../Icons.jsx';
 
-// ─── Interaction database ────────────────────────────────────────────────────
-// severity values match existing CSS status-badge classes:
-//   'critical'  → red   (Major)
-//   'low-stock' → amber (Moderate)
-//   'expiring'  → yellow (Minor)
-const KNOWN_INTERACTIONS = [
-  { a: 'Warfarin',      b: 'Aspirin',       severity: 'critical',  severityLabel: 'Major',    effect: 'Concurrent use significantly increases bleeding risk.' },
-  { a: 'Warfarin',      b: 'Ibuprofen',     severity: 'critical',  severityLabel: 'Major',    effect: 'NSAIDs increase anticoagulant effect and GI bleeding risk.' },
-  { a: 'Warfarin',      b: 'Naproxen',      severity: 'critical',  severityLabel: 'Major',    effect: 'Increased bleeding risk; avoid concurrent use.' },
-  { a: 'Metformin',     b: 'Alcohol',       severity: 'low-stock', severityLabel: 'Moderate', effect: 'Risk of lactic acidosis; avoid heavy alcohol consumption.' },
-  { a: 'Lisinopril',    b: 'Potassium',     severity: 'low-stock', severityLabel: 'Moderate', effect: 'ACE inhibitors raise potassium levels; hyperkalemia risk.' },
-  { a: 'Lisinopril',    b: 'Spironolactone',severity: 'critical',  severityLabel: 'Major',    effect: 'Combination can cause life-threatening hyperkalemia.' },
-  { a: 'Amlodipine',    b: 'Grapefruit',    severity: 'expiring',  severityLabel: 'Minor',    effect: 'Grapefruit inhibits metabolism, increasing drug levels.' },
-  { a: 'Atorvastatin',  b: 'Erythromycin',  severity: 'critical',  severityLabel: 'Major',    effect: 'Erythromycin inhibits statin metabolism, raising myopathy risk.' },
-  { a: 'Atorvastatin',  b: 'Clarithromycin',severity: 'critical',  severityLabel: 'Major',    effect: 'CYP3A4 inhibition drastically raises statin plasma levels.' },
-  { a: 'Aspirin',       b: 'Ibuprofen',     severity: 'low-stock', severityLabel: 'Moderate', effect: 'Ibuprofen may blunt the antiplatelet effect of aspirin.' },
-  { a: 'Clopidogrel',   b: 'Omeprazole',    severity: 'low-stock', severityLabel: 'Moderate', effect: 'Omeprazole reduces clopidogrel activation via CYP2C19.' },
-  { a: 'Ciprofloxacin', b: 'Antacids',      severity: 'low-stock', severityLabel: 'Moderate', effect: 'Antacids chelate ciprofloxacin, reducing its absorption.' },
-  { a: 'Methotrexate',  b: 'NSAIDs',        severity: 'critical',  severityLabel: 'Major',    effect: 'NSAIDs reduce methotrexate excretion, causing toxicity.' },
-  { a: 'Digoxin',       b: 'Amiodarone',    severity: 'critical',  severityLabel: 'Major',    effect: 'Amiodarone increases digoxin levels; risk of toxicity.' },
-  { a: 'Sildenafil',    b: 'Nitrates',      severity: 'critical',  severityLabel: 'Major',    effect: 'Combination causes severe, potentially fatal hypotension.' },
-  { a: 'SSRIs',         b: 'MAOIs',         severity: 'critical',  severityLabel: 'Major',    effect: 'Serotonin syndrome risk; contraindicated combination.' },
-  { a: 'Fluoxetine',    b: 'Tramadol',      severity: 'critical',  severityLabel: 'Major',    effect: 'Serotonin syndrome and seizure risk.' },
-  { a: 'Lithium',       b: 'Ibuprofen',     severity: 'critical',  severityLabel: 'Major',    effect: 'NSAIDs raise lithium levels; toxicity risk.' },
-  { a: 'Amoxicillin',   b: 'Methotrexate',  severity: 'low-stock', severityLabel: 'Moderate', effect: 'Penicillins may reduce renal clearance of methotrexate.' },
-  { a: 'Azithromycin',  b: 'Warfarin',      severity: 'low-stock', severityLabel: 'Moderate', effect: 'May enhance anticoagulant effect of warfarin.' },
-];
+// ─── Groq API helper (free, OpenAI-compatible) ───────────────────────────────
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
+const GROQ_MODEL   = 'llama-3.3-70b-versatile';
+const GROQ_URL     = 'https://api.groq.com/openai/v1/chat/completions';
 
-// Build a case-insensitive lookup set
-function buildLookup() {
-  const map = new Map();
-  KNOWN_INTERACTIONS.forEach(row => {
-    const key1 = `${row.a.toLowerCase()}|${row.b.toLowerCase()}`;
-    const key2 = `${row.b.toLowerCase()}|${row.a.toLowerCase()}`;
-    map.set(key1, row);
-    map.set(key2, row);
-  });
-  return map;
-}
-const INTERACTION_MAP = buildLookup();
+/**
+ * Asks ChatGPT to analyse drug interactions.
+ * Returns { interactions: Array, modelUsed: string }
+ */
+async function analyseWithGroq(drugs) {
+  const systemPrompt =
+    'You are a clinical pharmacology expert. You always respond with valid JSON only — no explanations, no markdown, no extra text.';
 
-const SEVERITY_ORDER = { critical: 0, 'low-stock': 1, expiring: 2 };
+  const userPrompt = `
+Analyse ALL possible pairwise drug interactions among these medications:
+${drugs.map((d, i) => `${i + 1}. ${d}`).join('\n')}
 
-// Check all pairs among selected drugs
-function findInteractions(drugs) {
-  const hits = [];
-  for (let i = 0; i < drugs.length; i++) {
-    for (let j = i + 1; j < drugs.length; j++) {
-      const key = `${drugs[i].toLowerCase()}|${drugs[j].toLowerCase()}`;
-      const match = INTERACTION_MAP.get(key);
-      if (match) {
-        hits.push({ ...match, foundA: drugs[i], foundB: drugs[j] });
-      }
+Return a JSON object with a single key "interactions" whose value is an array:
+{
+  "interactions": [
+    {
+      "drugA": "Name of drug A exactly as provided",
+      "drugB": "Name of drug B exactly as provided",
+      "severity": "Major" | "Moderate" | "Minor",
+      "mechanism": "Brief pharmacokinetic/pharmacodynamic mechanism (≤2 sentences)",
+      "effect": "Clinical effect or consequence (≤2 sentences)",
+      "management": "Recommended clinical management or monitoring (≤2 sentences)",
+      "avoid": true | false
     }
-  }
-  // Sort by severity
-  hits.sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3));
-  return hits;
+  ]
 }
 
-const SEVERITY_ICONS = { critical: '🚨', 'low-stock': '⚠️', expiring: 'ℹ️' };
+If NO interactions exist, return: { "interactions": [] }
 
+Rules:
+- Only include clinically documented, evidence-based interactions.
+- Use the drug names exactly as provided.
+`.trim();
+
+  const res = await fetch(GROQ_URL, {
+    method:  'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model:           GROQ_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: userPrompt   },
+      ],
+      temperature:     0.1,
+      response_format: { type: 'json_object' },
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      err?.error?.message || `Groq API error ${res.status}`,
+    );
+  }
+
+  const data   = await res.json();
+  const text   = data?.choices?.[0]?.message?.content ?? '{"interactions":[]}';
+  const parsed = JSON.parse(text);
+
+  return {
+    interactions: parsed.interactions ?? [],
+    modelUsed:    data?.model ?? GROQ_MODEL,
+  };
+}
+
+// ─── Severity helpers ─────────────────────────────────────────────────────────
+const SEVERITY_CSS = {
+  Major:    'critical',
+  Moderate: 'low-stock',
+  Minor:    'expiring',
+};
+const SEVERITY_ICON = { Major: '🚨', Moderate: '⚠️', Minor: 'ℹ️' };
+const SEVERITY_ORDER = { Major: 0, Moderate: 1, Minor: 2 };
+const BORDER_COLOR   = { Major: '#ef4444', Moderate: '#f59e0b', Minor: '#eab308' };
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function InteractionsPage({ onInteractionChecked }) {
-  const [drugs, setDrugs] = useState([]);
+  const [drugs,    setDrugs]    = useState([]);
   const [inputVal, setInputVal] = useState('');
-  const [results, setResults] = useState(null); // null | 'loading' | Array
-  const [checked, setChecked] = useState(false);
+  const [results,  setResults]  = useState(null);   // null | 'loading' | Array | Error
+  const [checked,  setChecked]  = useState(false);
+  const [aiModel,  setAiModel]  = useState('');
 
+  const apiKeyMissing = !GROQ_API_KEY || GROQ_API_KEY === 'your_groq_api_key_here';
+
+  // ── Drug list management ──────────────────────────────────────────────────
   const addDrug = (name) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    // Capitalise first letter for better matching
     const normalised = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
     if (!drugs.includes(normalised)) {
       setDrugs(prev => [...prev, normalised]);
@@ -88,28 +113,66 @@ export default function InteractionsPage({ onInteractionChecked }) {
     setChecked(false);
   };
 
-  const checkInteractions = () => {
+  // ── Main check ──────────────────────────────────────────────────────────
+  const checkInteractions = async () => {
+    if (drugs.length < 2) return;
     setResults('loading');
     setChecked(false);
-    setTimeout(() => {
-      const hits = findInteractions(drugs);
-      setResults(hits);
+    setAiModel('');
+
+    try {
+      if (apiKeyMissing) throw new Error('no_key');
+
+      const { interactions, modelUsed } = await analyseWithGroq(drugs);
+
+      // Sort by severity
+      interactions.sort(
+        (a, b) =>
+          (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3),
+      );
+
+      setResults(interactions);
+      setAiModel(modelUsed);
       setChecked(true);
-      if (onInteractionChecked) onInteractionChecked(drugs, hits.length);
-    }, 900);
+      if (onInteractionChecked) onInteractionChecked(drugs, interactions.length);
+    } catch (err) {
+      setResults({ error: err.message });
+      setChecked(true);
+    }
   };
 
-  const hasCritical = Array.isArray(results) && results.some(r => r.severity === 'critical');
+  const hasCritical = Array.isArray(results) && results.some(r => r.severity === 'Major');
   const hasAny      = Array.isArray(results) && results.length > 0;
+  const isError     = results && typeof results === 'object' && !Array.isArray(results) && results.error;
 
   return (
     <>
       <header className="header">
         <div className="header-left">
           <h1>Drug Interaction Checker</h1>
-          <p>AI-powered medication safety analysis</p>
+          <p>Real-time AI-powered medication safety analysis via Groq AI</p>
         </div>
       </header>
+
+      {/* ── API key warning ──────────────────────────────────────────────────── */}
+      {apiKeyMissing && (
+        <div
+          className="interaction-result"
+          style={{ background: '#fef3c7', border: '1px solid #f59e0b', marginBottom: 16 }}
+        >
+          <strong>⚙️ Groq API Key Required</strong>
+          <p style={{ fontSize: 13, margin: '6px 0 0' }}>
+            Add your Groq API key to <code>.env.local</code>:<br />
+            <code style={{ fontSize: 12 }}>VITE_GROQ_API_KEY=your_key_here</code>
+            <br />
+            Get a <strong>free</strong> key at{' '}
+            <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">
+              console.groq.com/keys
+            </a>
+            . Restart the dev server after saving.
+          </p>
+        </div>
+      )}
 
       {/* ── Checker card ────────────────────────────────────────────────────── */}
       <div className="interaction-checker">
@@ -118,13 +181,16 @@ export default function InteractionsPage({ onInteractionChecked }) {
             <BoltIcon size={18} />
           </div>
           <div className="checker-title">AI Drug Interaction Checker</div>
-          <div className="ai-badge"><BoltIcon size={12} /> AI Powered</div>
+          <div className="ai-badge">
+            <BoltIcon size={12} /> Groq AI
+          </div>
         </div>
 
         {/* Input */}
         <div className="form-group">
           <input
             type="text"
+            id="drug-input"
             className="form-input"
             placeholder="Type a medication name and press Enter to add…"
             value={inputVal}
@@ -141,7 +207,11 @@ export default function InteractionsPage({ onInteractionChecked }) {
             {drugs.map(drug => (
               <div key={drug} className="drug-tag">
                 {drug}
-                <button onClick={() => removeDrug(drug)} aria-label={`Remove ${drug}`}>
+                <button
+                  id={`remove-${drug.toLowerCase().replace(/\s+/g, '-')}`}
+                  onClick={() => removeDrug(drug)}
+                  aria-label={`Remove ${drug}`}
+                >
                   <CloseIcon size={12} />
                 </button>
               </div>
@@ -156,97 +226,225 @@ export default function InteractionsPage({ onInteractionChecked }) {
         )}
 
         <button
+          id="check-interactions-btn"
           className="btn btn-primary"
           onClick={checkInteractions}
           disabled={drugs.length < 2 || results === 'loading'}
         >
-          {results === 'loading' ? 'Analyzing…' : 'Check Interactions'}
+          {results === 'loading' ? 'Analyzing with Groq AI…' : '✦ Check Interactions'}
         </button>
 
-        {/* ── Results ─────────────────────────────────────────────────────── */}
+        {/* ── Loading ──────────────────────────────────────────────────────── */}
         {results === 'loading' && (
-          <div className="interaction-result" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' }}>
-              <span>AI analyzing interactions</span>
+          <div
+            className="interaction-result"
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', marginTop: 16 }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)' }}>
+              <BoltIcon size={16} />
+              <span>Groq AI is analyzing drug interactions…</span>
               <div className="loading-dots"><span /><span /><span /></div>
             </div>
-          </div>
-        )}
-
-        {checked && !hasAny && (
-          <div className="interaction-result safe">
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>✅ No Significant Interactions Found</div>
-            <p style={{ fontSize: 13, opacity: 0.85 }}>
-              No known major interactions detected among the selected medications. Always consult a pharmacist for clinical decisions.
+            <p style={{ fontSize: 12, marginTop: 8, opacity: 0.7, marginBottom: 0 }}>
+              Querying live pharmacology knowledge — this may take a few seconds.
             </p>
           </div>
         )}
 
-        {checked && hasAny && (
-          <div className={`interaction-result ${hasCritical ? 'danger' : ''}`}
-            style={!hasCritical ? { background: '#fffbeb', border: '1px solid #f59e0b' } : {}}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>
-              {hasCritical ? '🚨 Critical Interaction(s) Detected' : '⚠️ Potential Interaction(s) Found'}
+        {/* ── API Key / Network Error ───────────────────────────────────────── */}
+        {checked && isError && (
+          <div
+            className="interaction-result danger"
+            style={{ marginTop: 16 }}
+          >
+            <strong>
+              {results.error === 'no_key' ? '🔑 Missing API Key' : '❌ API Error'}
+            </strong>
+            <p style={{ fontSize: 13, margin: '6px 0 0' }}>
+              {results.error === 'no_key'
+                ? 'Please set VITE_GEMINI_API_KEY in your .env.local file and restart the dev server.'
+                : results.error}
+            </p>
+          </div>
+        )}
+
+        {/* ── Safe ─────────────────────────────────────────────────────────── */}
+        {checked && !isError && !hasAny && (
+          <div className="interaction-result safe" style={{ marginTop: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>
+              ✅ No Clinically Significant Interactions Found
+            </div>
+            <p style={{ fontSize: 13, opacity: 0.85, marginBottom: 8 }}>
+              Gemini found no documented clinically significant interactions among{' '}
+              <strong>{drugs.join(', ')}</strong>.
+            </p>
+            <p style={{ fontSize: 12, opacity: 0.7, marginBottom: 0 }}>
+              Always consult a licensed pharmacist or physician before dispensing.
+            </p>
+            {aiModel && (
+              <div style={{ marginTop: 10, fontSize: 11, opacity: 0.55 }}>
+                Powered by {aiModel}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Interactions Found ────────────────────────────────────────────── */}
+        {checked && !isError && hasAny && (
+          <div
+            className={`interaction-result ${hasCritical ? 'danger' : ''}`}
+            style={
+              !hasCritical
+                ? { background: '#fffbeb', border: '1px solid #f59e0b', marginTop: 16 }
+                : { marginTop: 16 }
+            }
+          >
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 14 }}>
+              {hasCritical
+                ? `🚨 ${results.filter(r => r.severity === 'Major').length} Critical Interaction(s) Detected`
+                : `⚠️ ${results.length} Potential Interaction(s) Found`}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {results.map((r, i) => (
-                <div key={i} style={{
-                  background: 'rgba(255,255,255,0.55)',
-                  borderRadius: 8,
-                  padding: '10px 12px',
-                  borderLeft: `3px solid ${r.severity === 'critical' ? '#ef4444' : r.severity === 'low-stock' ? '#f59e0b' : '#eab308'}`,
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span>{SEVERITY_ICONS[r.severity]}</span>
-                    <strong style={{ fontSize: 14 }}>{r.foundA} + {r.foundB}</strong>
-                    <span className={`status-badge ${r.severity}`} style={{ marginLeft: 'auto' }}>
-                      {r.severityLabel}
+                <div
+                  key={i}
+                  style={{
+                    background: 'rgba(255,255,255,0.6)',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                    borderLeft: `4px solid ${BORDER_COLOR[r.severity] ?? '#94a3b8'}`,
+                  }}
+                >
+                  {/* Header row */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginBottom: 10,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <span style={{ fontSize: 18 }}>{SEVERITY_ICON[r.severity]}</span>
+                    <strong style={{ fontSize: 14, flex: 1 }}>
+                      {r.drugA} ↔ {r.drugB}
+                    </strong>
+                    <span
+                      className={`status-badge ${SEVERITY_CSS[r.severity] ?? ''}`}
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      {r.severity}
                     </span>
+                    {r.avoid && (
+                      <span
+                        style={{
+                          background: '#fef2f2',
+                          color: '#dc2626',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: '2px 7px',
+                          borderRadius: 99,
+                          border: '1px solid #fca5a5',
+                        }}
+                      >
+                        AVOID
+                      </span>
+                    )}
                   </div>
-                  <p style={{ fontSize: 13, margin: 0, opacity: 0.9 }}>{r.effect}</p>
+
+                  {/* Detail rows */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <DetailRow label="⚗️ Mechanism" text={r.mechanism} />
+                    <DetailRow label="💊 Effect"    text={r.effect}    />
+                    <DetailRow label="📋 Management" text={r.management} />
+                  </div>
                 </div>
               ))}
             </div>
 
-            <p style={{ fontSize: 12, marginTop: 10, opacity: 0.7 }}>
+            <p style={{ fontSize: 12, marginTop: 12, opacity: 0.65, marginBottom: 0 }}>
               Always verify with a licensed pharmacist before dispensing.
             </p>
+            {aiModel && (
+              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.5 }}>
+                Powered by {aiModel}
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* ── Known Interaction Pairs table ────────────────────────────────────── */}
-      <div className="card">
+      {/* ── Quick-reference pills ─────────────────────────────────────────────── */}
+      <div className="card" style={{ marginTop: 24 }}>
         <div className="card-header">
-          <h3 className="card-title">Known Interaction Reference</h3>
+          <h3 className="card-title">High-Risk Combination Examples</h3>
           <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            {KNOWN_INTERACTIONS.length} pairs on record
+            Click a pair to auto-fill
           </span>
         </div>
-        <div className="card-body" style={{ padding: 0 }}>
-          <table className="inventory-table">
-            <thead>
-              <tr>
-                <th>Drug A</th>
-                <th>Drug B</th>
-                <th>Severity</th>
-                <th>Effect</th>
-              </tr>
-            </thead>
-            <tbody>
-              {KNOWN_INTERACTIONS.map((row, idx) => (
-                <tr key={idx}>
-                  <td><strong>{row.a}</strong></td>
-                  <td><strong>{row.b}</strong></td>
-                  <td><span className={`status-badge ${row.severity}`}>{row.severityLabel}</span></td>
-                  <td style={{ fontSize: 13 }}>{row.effect}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="card-body">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {EXAMPLE_PAIRS.map((pair, idx) => (
+              <button
+                key={idx}
+                id={`example-pair-${idx}`}
+                onClick={() => {
+                  setDrugs(pair.drugs);
+                  setResults(null);
+                  setChecked(false);
+                }}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  border: `1px solid ${pair.color}`,
+                  borderRadius: 20,
+                  padding: '6px 14px',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  color: 'var(--text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = pair.color + '22')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-secondary)')}
+              >
+                <span style={{ color: pair.color, fontSize: 15 }}>{pair.icon}</span>
+                {pair.drugs.join(' + ')}
+              </button>
+            ))}
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, marginBottom: 0 }}>
+            These examples are for educational demonstration. Real interaction data is fetched live from Gemini.
+          </p>
         </div>
       </div>
     </>
   );
 }
+
+// ─── Sub-component ────────────────────────────────────────────────────────────
+function DetailRow({ label, text }) {
+  if (!text) return null;
+  return (
+    <div style={{ display: 'flex', gap: 8, fontSize: 13, alignItems: 'flex-start' }}>
+      <span style={{ whiteSpace: 'nowrap', opacity: 0.7, minWidth: 110, fontWeight: 600 }}>
+        {label}
+      </span>
+      <span style={{ opacity: 0.9 }}>{text}</span>
+    </div>
+  );
+}
+
+// ─── Example high-risk pairs ──────────────────────────────────────────────────
+const EXAMPLE_PAIRS = [
+  { drugs: ['Warfarin', 'Aspirin'],       icon: '🚨', color: '#ef4444' },
+  { drugs: ['Sildenafil', 'Nitrates'],    icon: '🚨', color: '#ef4444' },
+  { drugs: ['SSRIs', 'MAOIs'],            icon: '🚨', color: '#ef4444' },
+  { drugs: ['Atorvastatin', 'Gemfibrozil'], icon: '🚨', color: '#ef4444' },
+  { drugs: ['Metformin', 'Alcohol'],      icon: '⚠️', color: '#f59e0b' },
+  { drugs: ['Clopidogrel', 'Omeprazole'], icon: '⚠️', color: '#f59e0b' },
+  { drugs: ['Lisinopril', 'Potassium'],   icon: '⚠️', color: '#f59e0b' },
+  { drugs: ['Amlodipine', 'Grapefruit'],  icon: 'ℹ️', color: '#eab308' },
+];
