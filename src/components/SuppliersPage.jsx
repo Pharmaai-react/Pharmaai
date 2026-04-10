@@ -52,7 +52,16 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
   const [form, setForm] = useState(EMPTY_FORM);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  // Load suppliers from Supabase
+  // Map Supabase row → app shape (fixes contact_name / color column names)
+  function rowToSupplier(row) {
+    return {
+      ...row,
+      contactName: row.contact_name ?? row.contactName ?? '',
+      bg: row.color ?? row.bg ?? '#dbeafe',
+    };
+  }
+
+  // Load suppliers from Supabase; seed with defaults on first use
   useEffect(() => {
     if (!currentUser?.id) return;
     supabase
@@ -60,7 +69,32 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
       .select('*')
       .eq('user_id', currentUser.id)
       .order('created_at')
-      .then(({ data }) => setSuppliers(data || []));
+      .then(async ({ data, error }) => {
+        if (error) {
+          // Table may not exist yet — show seed data locally so page isn't blank
+          console.warn('[suppliers] load error:', error.message);
+          setSuppliers(SEED_SUPPLIERS);
+          return;
+        }
+        if (!data || data.length === 0) {
+          // First time: seed default suppliers into Supabase
+          const seeds = SEED_SUPPLIERS.map(s => ({
+            user_id: currentUser.id,
+            name: s.name, city: s.city, country: s.country,
+            since: s.since, tags: s.tags,
+            contact_name: s.contactName,
+            phone: s.phone, email: s.email, notes: s.notes,
+            rating: parseFloat(s.rating) || 5.0,
+            orders: s.orders || 0,
+            emoji: s.emoji, color: s.bg,
+          }));
+          const { data: seeded } = await supabase
+            .from('suppliers').insert(seeds).select();
+          setSuppliers((seeded || []).map(rowToSupplier));
+        } else {
+          setSuppliers(data.map(rowToSupplier));
+        }
+      });
   }, [currentUser?.id]);
 
   const filtered = suppliers.filter(s =>
@@ -95,18 +129,21 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
     }
     const tagsArr = form.tags.split(',').map(t => t.trim()).filter(Boolean);
     if (editingId !== null) {
-      await supabase.from('suppliers').update({
+      const { error } = await supabase.from('suppliers').update({
         name: form.name, city: form.city, country: form.country,
         since: form.since, tags: tagsArr, contact_name: form.contactName,
         phone: form.phone, email: form.email, notes: form.notes,
         rating: parseFloat(form.rating) || 5.0, emoji: form.emoji, color: form.bg,
       }).eq('id', editingId);
+      if (error) { showNotification('❌ Update failed: ' + error.message); return; }
       setSuppliers(prev => prev.map(s =>
-        s.id === editingId ? { ...s, ...form, tags: tagsArr } : s
+        s.id === editingId
+          ? { ...s, ...form, tags: tagsArr, contactName: form.contactName, bg: form.bg }
+          : s
       ));
       showNotification(`✅ ${form.name} updated!`);
     } else {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('suppliers')
         .insert({
           user_id: currentUser.id,
@@ -117,7 +154,8 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
           orders: 0, emoji: form.emoji, color: form.bg,
         })
         .select().single();
-      if (data) setSuppliers(prev => [data, ...prev]);
+      if (error) { showNotification('❌ Add failed: ' + error.message); return; }
+      if (data) setSuppliers(prev => [rowToSupplier(data), ...prev]);
       showNotification(`✅ ${form.name} added to suppliers!`);
     }
     closeDrawer();
@@ -182,7 +220,7 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
           {filtered.map(s => (
             <div key={s.id} className="supplier-card">
               <div className="supplier-card-top">
-                <div className="supplier-logo" style={{ background: s.bg }}>{s.emoji}</div>
+                <div className="supplier-logo" style={{ background: s.bg || s.color || '#dbeafe' }}>{s.emoji || '💊'}</div>
                 <div className="supplier-card-actions">
                   <button className="supplier-icon-btn" title="Edit" onClick={() => openEdit(s)}><IconEdit /></button>
                   <button className="supplier-icon-btn danger" title="Delete" onClick={() => setDeleteConfirm(s.id)}><IconTrash /></button>
@@ -193,9 +231,9 @@ export default function SuppliersPage({ onOpenModal, showNotification, currentUs
               <div style={{ marginBottom: 10 }}>
                 {(s.tags || []).map(t => <span key={t} className="supplier-tag">{t}</span>)}
               </div>
-              {s.contactName && (
+              {(s.contactName || s.contact_name) && (
                 <div className="supplier-contact-info">
-                  <div className="contact-row"><IconUser /> {s.contactName}</div>
+                  <div className="contact-row"><IconUser /> {s.contactName || s.contact_name}</div>
                   {s.phone && <div className="contact-row"><IconPhone /> {s.phone}</div>}
                   {s.email && <div className="contact-row"><IconMail /> {s.email}</div>}
                 </div>
