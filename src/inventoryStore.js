@@ -155,3 +155,46 @@ export async function resetInventory(userId) {
   if (error) console.error('[inventory] reset:', error);
   return [];
 }
+
+// ── Sales history ─────────────────────────────────────────────────────────────
+
+/**
+ * Record every line item of a completed sale to `sales_history`.
+ * cart: [{ name, expiry, qty, price? }]
+ */
+export async function recordSale(userId, cart) {
+  if (!userId || !cart?.length) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = cart.map(item => ({
+    user_id:       userId,
+    medicine_name: item.name,
+    quantity_sold: item.qty,
+    sale_date:     today,
+    price_per_unit: item.price ?? 0,
+    total_amount:  (item.price ?? 0) * item.qty,
+  }));
+  const { error } = await supabase.from('sales_history').insert(rows);
+  if (error) console.warn('[sales] record error (table may not exist yet):', error.message);
+}
+
+/**
+ * Load 52 weeks of sales history for a user, grouped by medicine and week.
+ * Returns: [{ medicine_name, sale_date, quantity_sold }]
+ */
+export async function loadSalesHistory(userId) {
+  if (!userId) return [];
+  const since = new Date();
+  since.setDate(since.getDate() - 365); // last 12 months
+  const { data, error } = await supabase
+    .from('sales_history')
+    .select('medicine_name, sale_date, quantity_sold')
+    .eq('user_id', userId)
+    .gte('sale_date', since.toISOString().slice(0, 10))
+    .order('sale_date', { ascending: true });
+  if (error) {
+    console.warn('[sales] load error (table may not exist yet):', error.message);
+    return [];
+  }
+  return data || [];
+}
+
