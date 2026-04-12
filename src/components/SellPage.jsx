@@ -1,36 +1,29 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { QRIcon, CameraIcon, StopIcon, FlipIcon, ScanBarcodeIcon, PillIcon, CartIcon, TrashIcon, CheckIcon } from '../Icons.jsx';
+import { useBarcodeScanner } from '../useBarcodeScanner.js';
 
 export default function SellPage({ medicineDB, onNavigate, showNotification, onSaleComplete, salesHistory = [], preloadItem, onPreloadConsumed, currentUser }) {
-  const [cart, setCart] = useState([]);
-  const [lastScannedItem, setLastScannedItem] = useState(null);
-  const [scannedQty, setScannedQty] = useState(1);
-  const [scanStatus, setScanStatus] = useState({ type: 'idle', msg: 'Camera not started — click the scan area or the button below' });
-  const [scanningActive, setScanningActive] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [patientName, setPatientName] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('Cash');
-  const [discount, setDiscount] = useState(0);
-  const [govtScheme, setGovtScheme] = useState(''); // '' | 'RGHS' | 'Chiranjeevi'
-  // FEFO warning state
-  const [fefoWarning, setFefoWarning] = useState(null); // { scanned, preferred }
-  // Batch-picker: shown when same barcode has multiple expiry-date batches
-  const [batchPickerBatches, setBatchPickerBatches] = useState(null); // Array<med> | null
+  // ── All state up top ───────────────────────────────────────────────────
+  const [cart,               setCart]               = useState([]);
+  const [lastScannedItem,    setLastScannedItem]    = useState(null);
+  const [scannedQty,         setScannedQty]         = useState(1);
+  const [cameraCount,        setCameraCount]        = useState(0);
+  const [searchQuery,        setSearchQuery]        = useState('');
+  const [searchResults,      setSearchResults]      = useState([]);
+  const [showDropdown,       setShowDropdown]       = useState(false);
+  const [patientName,        setPatientName]        = useState('');
+  const [paymentMethod,      setPaymentMethod]      = useState('Cash');
+  const [discount,           setDiscount]           = useState(0);
+  const [govtScheme,         setGovtScheme]         = useState('');
+  const [fefoWarning,        setFefoWarning]        = useState(null);
+  const [batchPickerBatches, setBatchPickerBatches] = useState(null);
 
-  const videoRef = useRef(null);
-  const scanAreaRef = useRef(null);
-  const codeReaderRef = useRef(null);
-  const availableCamerasRef = useRef([]);
-  const currentCamIndexRef = useRef(0);
-  const streamRef = useRef(null);
-  // Track camera count in state so the Flip button re-renders when cameras are discovered
-  const [cameraCount, setCameraCount] = useState(0);
+  // Stable ref so callbacks defined before the hook can call setScanStatus
+  const setScanStatusRef = useRef(() => {});
 
+  // ── Callbacks that useBarcodeScanner's onScan will call ──────────────────────
   /**
-   * FEFO check: find same-name batches with earlier (sooner) expiry that still have stock.
-   * Returns the earliest-expiry alternative, or null if the scanned batch is already the soonest.
+   * FEFO check: find same-name batches with earlier expiry that still have stock.
    */
   const findFefoViolation = useCallback((scannedMed) => {
     const sameName = medicineDB.filter(
@@ -48,173 +41,73 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
   }, [medicineDB]);
 
   const selectBatch = useCallback((med) => {
-    // FEFO enforcement after batch is chosen
     const preferredBatch = findFefoViolation(med);
     if (preferredBatch) {
       setFefoWarning({ scanned: med, preferred: preferredBatch });
-      setScanStatus({ type: 'error', msg: '⚠️ FEFO violation — earlier batch must be sold first' });
+      setScanStatusRef.current({ type: 'error', msg: '⚠️ FEFO violation — earlier batch must be sold first' });
       return;
     }
     setLastScannedItem(med);
     setScannedQty(1);
-    setScanStatus({ type: 'found', msg: '✅ Found: ' + med.name });
+    setScanStatusRef.current({ type: 'found', msg: '✅ Found: ' + med.name });
   }, [findFefoViolation]);
 
   const handleScannedCode = useCallback((code) => {
-    // Collect ALL inventory records whose barcode or name matches
     const matches = medicineDB.filter(
       m => m.barcode === code.trim() || m.name.toLowerCase().includes(code.toLowerCase())
     );
     if (!matches.length) {
-      setScanStatus({ type: 'error', msg: '❌ Medicine not found: "' + code + '"' });
+      setScanStatusRef.current({ type: 'error', msg: '❌ Medicine not found: "' + code + '"' });
       showNotification('Medicine not found in database');
       return;
     }
-    // Multiple distinct expiry dates for the same barcode → show picker
     const uniqueExpiries = [...new Set(matches.map(m => m.expiry))];
     if (uniqueExpiries.length > 1) {
-      // Sort by expiry ascending (earliest first)
       const sorted = [...matches].sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
       setBatchPickerBatches(sorted);
-      setScanStatus({ type: 'found', msg: '📦 ' + matches[0].name + ' — choose expiry batch below' });
+      setScanStatusRef.current({ type: 'found', msg: '📦 ' + matches[0].name + ' — choose expiry batch below' });
       return;
     }
-    // Single batch — proceed normally
     selectBatch(matches[0]);
   }, [medicineDB, showNotification, selectBatch]);
 
-  // Wait for ZXing CDN script to finish loading (handles slow networks)
-  const waitForZXing = () => new Promise((resolve) => {
-    if (window.ZXing) { resolve(true); return; }
-    let tries = 0;
-    const interval = setInterval(() => {
-      tries++;
-      if (window.ZXing) { clearInterval(interval); resolve(true); }
-      else if (tries > 40) { clearInterval(interval); resolve(false); } // give up after ~4s
-    }, 100);
-  });
+  // ── Barcode scanner hook (npm @zxing/browser — no CDN race condition) ───────
+  const {
+    videoRef, scanAreaRef,
+    isActive:  scanningActive,
+    status:    scanStatus,
+    startScan: _startScan,
+    stopScan,
+    setStatus: setScanStatus,
+  } = useBarcodeScanner({ onScan: handleScannedCode });
 
-  const startScan = useCallback(async () => {
-    if (scanningActive) return;
-    const video = videoRef.current;
-    const area = scanAreaRef.current;
-    if (!video || !area) return;
-    video.style.removeProperty('display');
-    setScanStatus({ type: 'active', msg: 'Loading scanner library...' });
+  // Wire up the ref so pre-hook callbacks can call setScanStatus
+  setScanStatusRef.current = setScanStatus;
 
-    const zxingReady = await waitForZXing();
-
-    try {
-      if (zxingReady && window.ZXing) {
-        // ZXing v0.18: hints map is the first arg, timeBetweenScansMillis is second
-        const hints = new Map();
-        hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-          window.ZXing.BarcodeFormat.EAN_13, window.ZXing.BarcodeFormat.EAN_8,
-          window.ZXing.BarcodeFormat.CODE_128, window.ZXing.BarcodeFormat.CODE_39,
-          window.ZXing.BarcodeFormat.QR_CODE, window.ZXing.BarcodeFormat.UPC_A,
-          window.ZXing.BarcodeFormat.UPC_E
-        ]);
-        codeReaderRef.current = new window.ZXing.BrowserMultiFormatReader(hints, 300);
-        const cameras = await codeReaderRef.current.listVideoInputDevices();
-        availableCamerasRef.current = cameras;
-        setCameraCount(cameras.length); // trigger re-render so Flip button appears
-        if (!cameras.length) throw new Error('No cameras found');
-        setScanningActive(true);
-        area.classList.add('scan-active');
-        setScanStatus({ type: 'active', msg: '📸 Camera active — point at a barcode or QR code' });
-        await codeReaderRef.current.decodeFromVideoDevice(
-          cameras[currentCamIndexRef.current].deviceId,
-          video,
-          (result, err) => {
-            if (result) {
-              handleScannedCode(result.getText());
-              if (navigator.vibrate) navigator.vibrate(100);
-            }
-            // err here is just "not found yet" — ignore it, ZXing fires it continuously
-          }
-        );
-      } else {
-        throw new Error('ZXing library not available');
-      }
-    } catch (err) {
-      console.warn('ZXing scanner error:', err.message);
-      // Fallback: open camera only (no auto-decode)
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
-        streamRef.current = stream;
-        video.srcObject = stream;
-        video.style.display = 'block';
-        if (area) area.classList.add('scan-active');
-        setScanningActive(true);
-        setScanStatus({ type: 'active', msg: '📸 Camera active — ZXing unavailable, use manual search below' });
-      } catch {
-        setScanStatus({ type: 'error', msg: '❌ Camera denied. Use manual search below.' });
-        showNotification('Camera permission denied');
-      }
-    }
-  }, [scanningActive, medicineDB, handleScannedCode, showNotification]);
-
-  const stopScan = useCallback(() => {
-    const video = videoRef.current;
-    const area = scanAreaRef.current;
-    if (codeReaderRef.current) { try { codeReaderRef.current.reset(); } catch {} codeReaderRef.current = null; }
-    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-    if (video && video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
-    setScanningActive(false);
-    setCameraCount(0);
-    if (area) area.classList.remove('scan-active');
-    if (video) video.style.removeProperty('display');
-    setScanStatus({ type: 'idle', msg: 'Camera stopped' });
-  }, []);
-
+  // Detect camera count for the Flip button
   useEffect(() => {
-    return () => { stopScan(); };
-  }, [stopScan]);
-
-  // Pre-load an item from Inventory page → add to cart immediately
-  useEffect(() => {
-    if (!preloadItem) return;
-    // Find matching item in the live medicineDB (has current stock)
-    const live = medicineDB.find(
-      m => m.barcode === preloadItem.barcode || m.name === preloadItem.name
-    );
-    const target = live || preloadItem;
-    if (target.stock <= 0) {
-      showNotification('⚠️ ' + target.name + ' is out of stock');
+    if (scanningActive) {
+      import('@zxing/browser').then(({ BrowserMultiFormatReader }) => {
+        BrowserMultiFormatReader.listVideoInputDevices()
+          .then(devices => setCameraCount(devices.length))
+          .catch(() => {});
+      });
     } else {
-      addToCart(target, 1);
-      showNotification('🛒 ' + target.name + ' added from Inventory');
+      setCameraCount(0);
     }
-    if (onPreloadConsumed) onPreloadConsumed();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preloadItem]);
+  }, [scanningActive]);
 
-  const switchCamera = async () => {
-    const cameras = availableCamerasRef.current;
-    if (!cameras.length || !codeReaderRef.current) return;
+  const startScan = useCallback(() => {
+    _startScan();
+  }, [_startScan]);
 
-    // Advance to next camera index
-    currentCamIndexRef.current = (currentCamIndexRef.current + 1) % cameras.length;
-    const nextDeviceId = cameras[currentCamIndexRef.current].deviceId;
+  const switchCamera = useCallback(async () => {
+    stopScan();
+    await new Promise(r => setTimeout(r, 150));
+    startScan();
+    showNotification('📸 Camera switched');
+  }, [stopScan, startScan, showNotification]);
 
-    try {
-      // Must reset the existing decode session before starting a new one
-      codeReaderRef.current.reset();
-
-      // Small delay so the browser releases the previous stream
-      await new Promise(r => setTimeout(r, 150));
-
-      await codeReaderRef.current.decodeFromVideoDevice(
-        nextDeviceId,
-        videoRef.current,
-        (result) => { if (result) handleScannedCode(result.getText()); }
-      );
-      showNotification('📸 Camera switched');
-    } catch (err) {
-      console.warn('Camera switch failed:', err);
-      showNotification('⚠️ Could not switch camera');
-    }
-  };
 
   const handleSearch = (val) => {
     setSearchQuery(val);
@@ -260,6 +153,23 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
     });
     showNotification(med.name + ' added to cart');
   };
+
+  // Pre-load an item from Inventory page → add to cart immediately
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!preloadItem) return;
+    const live = medicineDB.find(
+      m => m.barcode === preloadItem.barcode || m.name === preloadItem.name
+    );
+    const target = live || preloadItem;
+    if (target.stock <= 0) {
+      showNotification('⚠️ ' + target.name + ' is out of stock');
+    } else {
+      addToCart(target, 1);
+      showNotification('🛒 ' + target.name + ' added from Inventory');
+    }
+    if (onPreloadConsumed) onPreloadConsumed();
+  }, [preloadItem]); // intentionally shallow
 
   const changeQty = (idx, delta) => {
     setCart(prev => {
