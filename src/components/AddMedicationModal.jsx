@@ -251,10 +251,10 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
                 className={`scan-area${addScannerActive ? ' scan-active' : ''}`}
                 ref={scanAreaRef}
                 onClick={!addScannerActive ? startAddScan : undefined}
-                style={{ aspectRatio: '4/3', cursor: 'pointer' }}
+                style={{ aspectRatio: '4/3', cursor: addScannerActive ? 'default' : 'pointer' }}
               >
                 <video ref={videoRef} playsInline autoPlay muted
-                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'none' }} />
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: addScannerActive ? 1 : 0 }} />
                 <div className="scan-line" />
                 <div className="scan-corners" />
                 <div className="scan-corners-2" />
@@ -266,6 +266,7 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
                   </div>
                 )}
               </div>
+
 
               <div className={`scan-status ${scanStatus.type}`} style={{ marginTop: 12 }}>
                 {scanStatus.type === 'active' ? (
