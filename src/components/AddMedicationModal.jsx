@@ -23,9 +23,7 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
   }, [medicineDB]);
 
   const { videoRef, scanAreaRef, isActive: addScannerActive, status: scanStatus, startScan: startAddScan, stopScan: stopAddScan } =
-    useBarcodeScanner({
-      onScan: handleAddBarcode,
-    });
+    useBarcodeScanner({ onScan: handleAddBarcode });
 
   const resetForm = () => {
     setForm({ barcode: '', name: '', category: '', scheme: '', unit: 'Tablet', quantity: '', price: '', expiry: '', threshold: '', supplier: '' });
@@ -84,7 +82,9 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
     onAdd({
       name: name.trim(), category, scheme: form.scheme || '',
       stock: stockPct, quantity: qty,
-      expiry, status, barcode, price: parseFloat(price), unit: form.unit
+      expiry, status, barcode, price: parseFloat(price), unit: form.unit,
+      threshold: form.threshold ? parseInt(form.threshold) : undefined,
+      supplier: form.supplier || '',
     });
     handleClose();
   };
@@ -181,19 +181,12 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
                       type="button"
                       onClick={() => setForm(p => ({ ...p, scheme: p.scheme === s ? '' : s }))}
                       style={{
-                        flex: 1,
-                        padding: '9px 6px',
-                        borderRadius: 8,
+                        flex: 1, padding: '9px 6px', borderRadius: 8,
                         border: form.scheme === s && s !== '' ? '2px solid var(--accent-teal)' : '1.5px solid var(--border)',
-                        background: form.scheme === s && s !== ''
-                          ? 'var(--accent-teal-light)'
-                          : s === '' ? 'var(--bg-body)' : 'white',
+                        background: form.scheme === s && s !== '' ? 'var(--accent-teal-light)' : s === '' ? 'var(--bg-body)' : 'white',
                         color: form.scheme === s && s !== '' ? 'var(--accent-teal)' : 'var(--text-secondary)',
                         fontWeight: form.scheme === s && s !== '' ? 700 : 500,
-                        fontSize: 13,
-                        cursor: 'pointer',
-                        transition: 'all .15s',
-                        fontFamily: 'Inter, sans-serif',
+                        fontSize: 13, cursor: 'pointer', transition: 'all .15s', fontFamily: 'Inter, sans-serif',
                       }}
                     >
                       {s === '' ? 'None' : s}
