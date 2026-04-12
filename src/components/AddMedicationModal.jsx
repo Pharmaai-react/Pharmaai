@@ -1,20 +1,31 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { CloseIcon, CameraIcon, StopIcon, ScanBarcodeIcon } from '../Icons.jsx';
+import { useBarcodeScanner } from '../useBarcodeScanner.js';
 
 export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB, showNotification }) {
   const [activeTab, setActiveTab] = useState('manual');
   const [form, setForm] = useState({ barcode: '', name: '', category: '', scheme: '', unit: 'Tablet', quantity: '', price: '', expiry: '', threshold: '', supplier: '' });
   const [barcodeHint, setBarcodeHint] = useState(false);
   const [error, setError] = useState('');
-  const [scanStatus, setScanStatus] = useState({ type: 'idle', msg: 'Camera not started' });
   const [scanResult, setScanResult] = useState(null);
-  const [addScannerActive, setAddScannerActive] = useState(false);
   const [addScannedMed, setAddScannedMed] = useState(null);
 
-  const videoRef = useRef(null);
-  const scanAreaRef = useRef(null);
-  const codeReaderRef = useRef(null);
-  const streamRef = useRef(null);
+  const handleAddBarcode = useCallback((code) => {
+    const trimmed = code.trim();
+    const med = (medicineDB || []).find(m => m.barcode === trimmed || m.name.toLowerCase().includes(trimmed.toLowerCase()));
+    if (med) {
+      setAddScannedMed(med);
+      setScanResult({ type: 'existing', barcode: med.barcode, name: med.name, category: med.category, price: med.price.toFixed(2), stock: med.stock, unit: med.unit });
+    } else {
+      setAddScannedMed(null);
+      setScanResult({ type: 'new', barcode: trimmed });
+    }
+  }, [medicineDB]);
+
+  const { videoRef, scanAreaRef, isActive: addScannerActive, status: scanStatus, startScan: startAddScan, stopScan: stopAddScan } =
+    useBarcodeScanner({
+      onScan: handleAddBarcode,
+    });
 
   const resetForm = () => {
     setForm({ barcode: '', name: '', category: '', scheme: '', unit: 'Tablet', quantity: '', price: '', expiry: '', threshold: '', supplier: '' });
@@ -40,95 +51,6 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
       setBarcodeHint(true);
     } else { setBarcodeHint(false); }
   };
-
-  const handleAddBarcode = useCallback((code) => {
-    const trimmed = code.trim();
-    const med = (medicineDB || []).find(m => m.barcode === trimmed || m.name.toLowerCase().includes(trimmed.toLowerCase()));
-    if (med) {
-      setAddScannedMed(med);
-      setScanStatus({ type: 'found', msg: '✅ Found: ' + med.name });
-      setScanResult({ type: 'existing', barcode: med.barcode, name: med.name, category: med.category, price: med.price.toFixed(2), stock: med.stock, unit: med.unit });
-    } else {
-      setAddScannedMed(null);
-      setScanStatus({ type: 'found', msg: '📦 New barcode captured: ' + trimmed });
-      setScanResult({ type: 'new', barcode: trimmed });
-    }
-    stopAddScan();
-    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-  }, [medicineDB]);
-
-  const stopAddScan = useCallback(() => {
-    if (codeReaderRef.current) { try { codeReaderRef.current.reset(); } catch {} codeReaderRef.current = null; }
-    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-    const video = videoRef.current; const area = scanAreaRef.current;
-    if (video && video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
-    setAddScannerActive(false);
-    if (area) area.classList.remove('scan-active');
-    if (video) video.style.removeProperty('display');
-  }, []);
-
-  // Wait for ZXing CDN script to finish loading (handles slow networks)
-  const waitForZXing = () => new Promise((resolve) => {
-    if (window.ZXing) { resolve(true); return; }
-    let tries = 0;
-    const interval = setInterval(() => {
-      tries++;
-      if (window.ZXing) { clearInterval(interval); resolve(true); }
-      else if (tries > 40) { clearInterval(interval); resolve(false); }
-    }, 100);
-  });
-
-  const startAddScan = useCallback(async () => {
-    if (addScannerActive) return;
-    const video = videoRef.current; const area = scanAreaRef.current;
-    if (!video || !area) return;
-    video.style.removeProperty('display');
-    setScanStatus({ type: 'active', msg: 'Loading scanner library...' });
-
-    const zxingReady = await waitForZXing();
-
-    try {
-      if (zxingReady && window.ZXing) {
-        const hints = new Map();
-        hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-          window.ZXing.BarcodeFormat.EAN_13, window.ZXing.BarcodeFormat.EAN_8,
-          window.ZXing.BarcodeFormat.CODE_128, window.ZXing.BarcodeFormat.CODE_39,
-          window.ZXing.BarcodeFormat.QR_CODE
-        ]);
-        // ZXing v0.18: hints map is first arg, timeBetweenScansMillis is second
-        codeReaderRef.current = new window.ZXing.BrowserMultiFormatReader(hints, 300);
-        const cameras = await codeReaderRef.current.listVideoInputDevices();
-        if (!cameras.length) throw new Error('No cameras found');
-        setAddScannerActive(true);
-        area.classList.add('scan-active');
-        setScanStatus({ type: 'active', msg: '📸 Point at the barcode on the medicine box' });
-        await codeReaderRef.current.decodeFromVideoDevice(
-          cameras[cameras.length - 1].deviceId,
-          video,
-          (result, err) => {
-            if (result) handleAddBarcode(result.getText());
-            // err is just ZXing's continuous "not found yet" — safely ignore
-          }
-        );
-      } else {
-        throw new Error('ZXing library not available');
-      }
-    } catch (err) {
-      console.warn('ZXing scanner error (inventory):', err.message);
-      // Fallback: open camera only, no auto-decode
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
-        streamRef.current = stream;
-        video.srcObject = stream;
-        video.style.display = 'block';
-        area.classList.add('scan-active');
-        setAddScannerActive(true);
-        setScanStatus({ type: 'active', msg: '📸 Camera active — ZXing unavailable, enter barcode manually below' });
-      } catch {
-        setScanStatus({ type: 'error', msg: '❌ Camera denied. Enter barcode manually below.' });
-      }
-    }
-  }, [addScannerActive, medicineDB, handleAddBarcode]);
 
   const useScannedForAdd = () => {
     if (!addScannedMed) return;
