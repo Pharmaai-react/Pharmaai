@@ -8,6 +8,7 @@ import {
   deleteInventoryItem,
   applyCartSale,
   resetInventory,
+  recordSale,
   toInventoryData,
   toMedicineDB,
 } from './inventoryStore.js';
@@ -175,11 +176,10 @@ export default function App() {
   }, [currentUser, showNotification, notifyMedAdded]);
 
   const handleSaleComplete = useCallback(async (cart, receipt) => {
-    await applyCartSale(currentUser.id, cart);
-    const updated = await loadInventory(currentUser.id);
-    setInventory(updated);
-    notifySale(cart);
-    // Append to today's sales history (persists across page navigation)
+    // Show receipt IMMEDIATELY — don't wait for backend
+    setReceiptData(receipt);
+    setOpenModal('receipt');
+
     if (receipt) {
       setSalesHistory(prev => [{
         txnId:     receipt.txnId,
@@ -188,11 +188,20 @@ export default function App() {
         total:     receipt.total,
         time:      receipt.time,
         payment:   receipt.payment,
+        cart,
       }, ...prev]);
     }
-    setReceiptData(receipt);
-    setOpenModal('receipt');
+
+    // Backend ops run in the background — receipt is already visible
+    try { await applyCartSale(currentUser.id, cart); } catch (e) { console.error('applyCartSale failed:', e); }
+    try { await recordSale(currentUser.id, cart); } catch (e) { console.error('recordSale failed:', e); }
+    try {
+      const updated = await loadInventory(currentUser.id);
+      setInventory(updated);
+    } catch (e) { console.error('loadInventory failed:', e); }
+    try { notifySale(cart); } catch {}
   }, [currentUser, notifySale]);
+
 
   // Update a single inventory item (from InventoryPage edit modal)
   const handleUpdateItem = useCallback(async (updatedItem) => {
@@ -347,7 +356,13 @@ export default function App() {
               onPreloadSell={(item) => setPreloadSellItem(item)}
             />
           )}
-          {currentPage === 'predictions' && canAccess(currentUser?.role, 'predictions') && <PredictionsPage inventoryData={inventoryData} />}
+          {currentPage === 'predictions' && canAccess(currentUser?.role, 'predictions') && (
+            <PredictionsPage
+              inventoryData={inventoryData}
+              currentUser={currentUser}
+              salesHistory={salesHistory}
+            />
+          )}
           {currentPage === 'interactions' && canAccess(currentUser?.role, 'interactions') && <InteractionsPage onInteractionChecked={notifyInteractionCheck} />}
           {currentPage === 'sell' && (
             <SellPage
