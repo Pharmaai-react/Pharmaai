@@ -8,7 +8,9 @@
  *     useBarcodeScanner({ onScan, onError });
  */
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/browser';
+import { BrowserMultiFormatReader } from '@zxing/browser';
+import { BarcodeFormat, DecodeHintType } from '@zxing/library';
+
 
 const SUPPORTED_FORMATS = [
   BarcodeFormat.EAN_13,
