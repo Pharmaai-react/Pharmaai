@@ -4,7 +4,7 @@ import { useBarcodeScanner } from '../useBarcodeScanner.js';
 
 export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB, showNotification }) {
   const [activeTab, setActiveTab] = useState('manual');
-  const [form, setForm] = useState({ barcode: '', name: '', category: '', scheme: '', unit: 'Tablet', quantity: '', price: '', expiry: '', threshold: '', supplier: '' });
+  const [form, setForm] = useState({ barcode: '', name: '', category: '', scheme: '', unit: 'Tablet', quantity: '', price: '', expiry: '', threshold: '', supplier: '', tabletsPerStrip: '' });
   const [barcodeHint, setBarcodeHint] = useState(false);
   const [error, setError] = useState('');
   const [scanResult, setScanResult] = useState(null);
@@ -26,7 +26,7 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
     useBarcodeScanner({ onScan: handleAddBarcode });
 
   const resetForm = () => {
-    setForm({ barcode: '', name: '', category: '', scheme: '', unit: 'Tablet', quantity: '', price: '', expiry: '', threshold: '', supplier: '' });
+    setForm({ barcode: '', name: '', category: '', scheme: '', unit: 'Tablet', quantity: '', price: '', expiry: '', threshold: '', supplier: '', tabletsPerStrip: '' });
     setBarcodeHint(false);
     setError('');
     setScanResult(null);
@@ -45,7 +45,7 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
     if (!val || val.length < 8) { setBarcodeHint(false); return; }
     const med = (medicineDB || []).find(m => m.barcode === val.trim());
     if (med) {
-      setForm(prev => ({ ...prev, name: med.name, category: med.category || '', price: med.price.toFixed(2), unit: med.unit || 'Tablet' }));
+      setForm(prev => ({ ...prev, name: med.name, category: med.category || '', price: med.price.toFixed(2), unit: med.unit || 'Tablet', tabletsPerStrip: med.tabletsPerStrip || '' }));
       setBarcodeHint(true);
     } else { setBarcodeHint(false); }
   };
@@ -53,7 +53,7 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
   const useScannedForAdd = () => {
     if (!addScannedMed) return;
     const m = addScannedMed;
-    setForm(prev => ({ ...prev, barcode: m.barcode, name: m.name, category: m.category || '', price: m.price.toFixed(2), unit: m.unit || 'Tablet' }));
+    setForm(prev => ({ ...prev, barcode: m.barcode, name: m.name, category: m.category || '', price: m.price.toFixed(2), unit: m.unit || 'Tablet', tabletsPerStrip: m.tabletsPerStrip || '' }));
     setBarcodeHint(true);
     setActiveTab('manual');
     showNotification('Form filled from scanned barcode!');
@@ -85,6 +85,7 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
       expiry, status, barcode, price: parseFloat(price), unit: form.unit,
       threshold: form.threshold ? parseInt(form.threshold) : undefined,
       supplier: form.supplier || '',
+      tabletsPerStrip: form.unit === 'Strip' && form.tabletsPerStrip ? parseInt(form.tabletsPerStrip) : undefined,
     });
     handleClose();
   };
@@ -212,6 +213,24 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
                     value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))} />
                 </div>
               </div>
+
+              {/* Tablets per Strip — shown only when unit is Strip */}
+              {form.unit === 'Strip' && (
+                <div className="form-group" style={{ background: 'linear-gradient(135deg,#eff6ff,#f0fdf4)', border: '1.5px solid #93c5fd', borderRadius: 10, padding: 14 }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    💊 Tablets per Strip *
+                    <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>— needed for per-tablet selling</span>
+                  </label>
+                  <input type="number" className="form-input" placeholder="e.g. 10" min="1"
+                    value={form.tabletsPerStrip}
+                    onChange={e => setForm(p => ({ ...p, tabletsPerStrip: e.target.value }))}
+                    style={{ maxWidth: 140 }}
+                  />
+                  <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 6 }}>
+                    💡 Price per tablet will be auto-calculated as ₹{form.price && form.tabletsPerStrip ? (parseFloat(form.price) / parseInt(form.tabletsPerStrip)).toFixed(2) : '—'}
+                  </div>
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="form-group">
