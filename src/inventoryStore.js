@@ -11,9 +11,9 @@ export function deriveStatus(quantity, expiry) {
   const days = expiry
     ? Math.ceil((new Date(expiry).getTime() - Date.now()) / 86400000)
     : Infinity;
-  if (days <= 0)   return 'expired';
-  if (days <= 30)  return 'expiring';
-  if (quantity <= 0)  return 'out';
+  if (days <= 0) return 'expired';
+  if (days <= 30) return 'expiring';
+  if (quantity <= 0) return 'out';
   if (quantity <= 20) return 'critical';
   if (quantity <= 50) return 'low';
   return 'normal';
@@ -21,17 +21,18 @@ export function deriveStatus(quantity, expiry) {
 
 export function toInventoryData(records) {
   return records.map(r => ({
-    _id:         r._id,
-    name:        r.name,
-    category:    r.category     || 'General',
-    stock:       Math.min(100, Math.round((r.quantity / 200) * 100)),
-    quantity:    r.quantity     || 0,
-    expiry:      r.expiry,
-    status:      r.status       || deriveStatus(r.quantity, r.expiry),
+    _id: r._id,
+    name: r.name,
+    category: r.category || 'General',
+    stock: Math.min(100, Math.round((r.quantity / 200) * 100)),
+    quantity: r.quantity || 0,
+    expiry: r.expiry,
+    status: r.status || deriveStatus(r.quantity, r.expiry),
     lastUpdated: r.lastUpdated,
-    price:       r.price        ?? 0,
-    unit:        r.unit         ?? 'Unit',
-    barcode:     r.barcode      || '',
+    price: r.price ?? 0,
+    unit: r.unit ?? 'Unit',
+    barcode: r.barcode || '',
+    tabletsPerStrip: r.tabletsPerStrip || null,
   }));
 }
 
@@ -49,16 +50,17 @@ export function toMedicineDB(records) {
 
 function rowToRecord(row) {
   return {
-    _id:         row.id,
-    name:        row.name,
-    category:    row.category,
-    barcode:     row.barcode    || '',
-    quantity:    row.quantity   || 0,
-    expiry:      row.expiry,
-    price:       parseFloat(row.price) || 0,
-    unit:        row.unit       || 'Unit',
-    status:      row.status     || deriveStatus(row.quantity, row.expiry),
+    _id: row.id,
+    name: row.name,
+    category: row.category,
+    barcode: row.barcode || '',
+    quantity: row.quantity || 0,
+    expiry: row.expiry,
+    price: parseFloat(row.price) || 0,
+    unit: row.unit || 'Unit',
+    status: row.status || deriveStatus(row.quantity, row.expiry),
     lastUpdated: row.last_updated,
+    tabletsPerStrip: row.tablets_per_strip || null,
   };
 }
 
@@ -79,16 +81,17 @@ export async function addInventoryItem(userId, item) {
   const { data, error } = await supabase
     .from('inventory')
     .insert({
-      user_id:      userId,
-      name:         item.name,
-      category:     item.category || 'General',
-      barcode:      item.barcode  || '',
-      quantity:     item.quantity || 0,
-      expiry:       item.expiry   || null,
-      price:        item.price    || 0,
-      unit:         item.unit     || 'Unit',
-      status:       deriveStatus(item.quantity, item.expiry),
+      user_id: userId,
+      name: item.name,
+      category: item.category || 'General',
+      barcode: item.barcode || '',
+      quantity: item.quantity || 0,
+      expiry: item.expiry || null,
+      price: item.price || 0,
+      unit: item.unit || 'Unit',
+      status: deriveStatus(item.quantity, item.expiry),
       last_updated: new Date().toISOString(),
+      tablets_per_strip: item.tabletsPerStrip || null,
     })
     .select()
     .single();
@@ -100,14 +103,15 @@ export async function updateInventoryItem(itemId, updates) {
   const { error } = await supabase
     .from('inventory')
     .update({
-      ...('name'     in updates && { name:     updates.name }),
+      ...('name' in updates && { name: updates.name }),
       ...('category' in updates && { category: updates.category }),
       ...('quantity' in updates && { quantity: updates.quantity }),
-      ...('expiry'   in updates && { expiry:   updates.expiry }),
-      ...('price'    in updates && { price:    updates.price }),
-      ...('unit'     in updates && { unit:     updates.unit }),
-      ...('barcode'  in updates && { barcode:  updates.barcode }),
-      status:       deriveStatus(updates.quantity, updates.expiry),
+      ...('expiry' in updates && { expiry: updates.expiry }),
+      ...('price' in updates && { price: updates.price }),
+      ...('unit' in updates && { unit: updates.unit }),
+      ...('barcode' in updates && { barcode: updates.barcode }),
+      ...('tabletsPerStrip' in updates && { tablets_per_strip: updates.tabletsPerStrip }),
+      status: deriveStatus(updates.quantity, updates.expiry),
       last_updated: new Date().toISOString(),
     })
     .eq('id', itemId);
@@ -138,8 +142,8 @@ export async function applyCartSale(userId, cart) {
     if (record) {
       const newQty = Math.max(0, record.quantity - item.qty);
       await supabase.from('inventory').update({
-        quantity:     newQty,
-        status:       deriveStatus(newQty, item.expiry),
+        quantity: newQty,
+        status: deriveStatus(newQty, item.expiry),
         last_updated: new Date().toISOString(),
       }).eq('id', record.id);
     }
@@ -166,12 +170,12 @@ export async function recordSale(userId, cart) {
   if (!userId || !cart?.length) return;
   const today = new Date().toISOString().slice(0, 10);
   const rows = cart.map(item => ({
-    user_id:       userId,
+    user_id: userId,
     medicine_name: item.name,
     quantity_sold: item.qty,
-    sale_date:     today,
+    sale_date: today,
     price_per_unit: item.price ?? 0,
-    total_amount:  (item.price ?? 0) * item.qty,
+    total_amount: (item.price ?? 0) * item.qty,
   }));
   const { error } = await supabase.from('sales_history').insert(rows);
   if (error) console.warn('[sales] record error (table may not exist yet):', error.message);
