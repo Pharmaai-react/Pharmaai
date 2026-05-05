@@ -163,8 +163,8 @@ export default function AddMedicationModal({ isOpen, onClose, onAdd, medicineDB,
                   <label className="form-label">Unit *</label>
                   <select className="form-input form-select" value={form.unit}
                     onChange={e => setForm(p => ({ ...p, unit: e.target.value }))}>
-                    <option>Tablet</option><option>Capsule</option><option>Vial</option>
-                    <option>Bottle</option><option>Inhaler</option><option>Sachet</option><option>Strip</option>
+                    <option>Strip</option><option>Capsule</option><option>Vial</option>
+                    <option>Bottle</option><option>Inhaler</option><option>Sachet</option><option>Tablet</option>
                   </select>
                 </div>
               </div>
