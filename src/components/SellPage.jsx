@@ -4,22 +4,23 @@ import { useBarcodeScanner } from '../useBarcodeScanner.js';
 
 export default function SellPage({ medicineDB, onNavigate, showNotification, onSaleComplete, salesHistory = [], preloadItem, onPreloadConsumed, currentUser }) {
   // ── All state up top ───────────────────────────────────────────────────
-  const [cart,               setCart]               = useState([]);
-  const [lastScannedItem,    setLastScannedItem]    = useState(null);
-  const [scannedQty,         setScannedQty]         = useState(1);
-  const [cameraCount,        setCameraCount]        = useState(0);
-  const [searchQuery,        setSearchQuery]        = useState('');
-  const [searchResults,      setSearchResults]      = useState([]);
-  const [showDropdown,       setShowDropdown]       = useState(false);
-  const [patientName,        setPatientName]        = useState('');
-  const [paymentMethod,      setPaymentMethod]      = useState('Cash');
-  const [discount,           setDiscount]           = useState(0);
-  const [govtScheme,         setGovtScheme]         = useState('');
-  const [fefoWarning,        setFefoWarning]        = useState(null);
+  const [cart, setCart] = useState([]);
+  const [lastScannedItem, setLastScannedItem] = useState(null);
+  const [scannedQty, setScannedQty] = useState(1);
+  const [sellMode, setSellMode] = useState('strip'); // 'strip' | 'tablet'
+  const [cameraCount, setCameraCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [patientName, setPatientName] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [discount, setDiscount] = useState(0);
+  const [govtScheme, setGovtScheme] = useState('');
+  const [fefoWarning, setFefoWarning] = useState(null);
   const [batchPickerBatches, setBatchPickerBatches] = useState(null);
 
   // Stable ref so callbacks defined before the hook can call setScanStatus
-  const setScanStatusRef = useRef(() => {});
+  const setScanStatusRef = useRef(() => { });
 
   // ── Callbacks that useBarcodeScanner's onScan will call ──────────────────────
   /**
@@ -28,9 +29,9 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
   const findFefoViolation = useCallback((scannedMed) => {
     const sameName = medicineDB.filter(
       m => m.name.toLowerCase() === scannedMed.name.toLowerCase() &&
-           m.barcode !== scannedMed.barcode &&
-           m.stock > 0 &&
-           m.expiry
+        m.barcode !== scannedMed.barcode &&
+        m.stock > 0 &&
+        m.expiry
     );
     if (!sameName.length) return null;
     const scannedExpiry = scannedMed.expiry ? new Date(scannedMed.expiry).getTime() : Infinity;
@@ -49,6 +50,7 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
     }
     setLastScannedItem(med);
     setScannedQty(1);
+    setSellMode(med.unit === 'Strip' && med.tabletsPerStrip ? 'strip' : 'strip');
     setScanStatusRef.current({ type: 'found', msg: '✅ Found: ' + med.name });
   }, [findFefoViolation]);
 
@@ -74,8 +76,8 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
   // ── Barcode scanner hook (npm @zxing/browser — no CDN race condition) ───────
   const {
     videoRef, scanAreaRef,
-    isActive:  scanningActive,
-    status:    scanStatus,
+    isActive: scanningActive,
+    status: scanStatus,
     startScan: _startScan,
     stopScan,
     setStatus: setScanStatus,
@@ -90,7 +92,7 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
       import('@zxing/browser').then(({ BrowserMultiFormatReader }) => {
         BrowserMultiFormatReader.listVideoInputDevices()
           .then(devices => setCameraCount(devices.length))
-          .catch(() => {});
+          .catch(() => { });
       });
     } else {
       setCameraCount(0);
@@ -135,23 +137,37 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
   const addScannedToCart = () => {
     if (!lastScannedItem) return;
     if (scannedQty < 1) return showNotification('Quantity must be at least 1');
-    if (scannedQty > lastScannedItem.stock) return showNotification('Only ' + lastScannedItem.stock + ' in stock!');
-    addToCart(lastScannedItem, scannedQty);
+
+    const isTabletMode = sellMode === 'tablet' && lastScannedItem.unit === 'Strip' && lastScannedItem.tabletsPerStrip;
+    if (isTabletMode) {
+      const totalTablets = lastScannedItem.quantity * lastScannedItem.tabletsPerStrip;
+      if (scannedQty > totalTablets) return showNotification('Only ' + totalTablets + ' tablets available!');
+    } else {
+      if (scannedQty > lastScannedItem.quantity) return showNotification('Only ' + lastScannedItem.quantity + ' in stock!');
+    }
+    addToCart(lastScannedItem, scannedQty, isTabletMode ? 'tablet' : 'strip');
     setLastScannedItem(null);
   };
 
-  const addToCart = (med, qty = 1) => {
-    // Unique cart key: barcode + expiry so different batches stay as separate line items
-    const cartKey = (item) => item.barcode + '|' + (item.expiry || '');
+  const addToCart = (med, qty = 1, mode = 'strip') => {
+    // Unique cart key: barcode + expiry + sell mode so strip/tablet sales stay separate
+    const cartKey = (item) => item.barcode + '|' + (item.expiry || '') + '|' + (item.sellMode || 'strip');
+    const newItem = { ...med, sellMode: mode };
     setCart(prev => {
-      const existing = prev.find(i => cartKey(i) === cartKey(med));
+      const existing = prev.find(i => cartKey(i) === cartKey(newItem));
       if (existing) {
-        if (existing.qty + qty > med.stock) { showNotification('Cannot exceed stock limit (' + med.stock + ')'); return prev; }
-        return prev.map(i => cartKey(i) === cartKey(med) ? { ...i, qty: i.qty + qty } : i);
+        const maxQty = mode === 'tablet' && med.tabletsPerStrip
+          ? med.quantity * med.tabletsPerStrip
+          : med.quantity;
+        if (existing.qty + qty > maxQty) {
+          showNotification('Cannot exceed stock limit (' + maxQty + (mode === 'tablet' ? ' tablets' : '') + ')');
+          return prev;
+        }
+        return prev.map(i => cartKey(i) === cartKey(newItem) ? { ...i, qty: i.qty + qty } : i);
       }
-      return [...prev, { ...med, qty }];
+      return [...prev, { ...newItem, qty }];
     });
-    showNotification(med.name + ' added to cart');
+    showNotification(med.name + (mode === 'tablet' ? ' (tablets)' : '') + ' added to cart');
   };
 
   // Pre-load an item from Inventory page → add to cart immediately
@@ -176,9 +192,13 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
       const updated = [...prev];
       updated[idx] = { ...updated[idx], qty: updated[idx].qty + delta };
       if (updated[idx].qty < 1) return prev.filter((_, i) => i !== idx);
-      if (updated[idx].qty > updated[idx].stock) {
-        showNotification('Maximum stock reached');
-        updated[idx].qty = updated[idx].stock;
+      const item = updated[idx];
+      const maxQty = item.sellMode === 'tablet' && item.tabletsPerStrip
+        ? item.quantity * item.tabletsPerStrip
+        : item.quantity;
+      if (updated[idx].qty > maxQty) {
+        showNotification('Maximum stock reached' + (item.sellMode === 'tablet' ? ` (${maxQty} tablets)` : ''));
+        updated[idx].qty = maxQty;
       }
       return updated;
     });
@@ -207,7 +227,15 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
     setGovtScheme('');
   };
 
-  const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  /** Get the effective unit price for a cart item (per-tablet if tablet mode) */
+  const getItemUnitPrice = (item) => {
+    if (item.sellMode === 'tablet' && item.tabletsPerStrip) {
+      return item.price / item.tabletsPerStrip;
+    }
+    return item.price;
+  };
+
+  const subtotal = cart.reduce((s, i) => s + getItemUnitPrice(i) * i.qty, 0);
   const gst = subtotal * 0.18;
   // Government scheme gives 80% discount; manual discount adds on top
   const schemeDiscPct = govtScheme ? 80 : 0;
@@ -220,15 +248,27 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
     const txnId = 'TXN-' + Date.now().toString().slice(-6);
+
+    // Convert tablet-mode cart items to strip-equivalent qty for inventory deduction
+    const deductionCart = cart.map(item => {
+      if (item.sellMode === 'tablet' && item.tabletsPerStrip) {
+        // Convert tablets → strips (ceil to deduct partial strips from inventory)
+        const stripsUsed = Math.ceil(item.qty / item.tabletsPerStrip);
+        return { ...item, qty: stripsUsed, name: item.name, expiry: item.expiry, price: item.price };
+      }
+      return item;
+    });
+
     const saleData = {
       txnId, patient: patientName || 'Walk-in Customer',
-      items: [...cart], subtotal, gst,
+      items: cart.map(i => ({ ...i, unitPrice: getItemUnitPrice(i) })),
+      subtotal, gst,
       discount: effectiveDiscPct,
       govtScheme: govtScheme || null,
       discAmt, total, time: timeStr, payment: paymentMethod, date: now
     };
     // onSaleComplete handles inventory deduction, receipt modal, and sales history
-    if (onSaleComplete) onSaleComplete(cart, { ...saleData, itemCount: cart.length });
+    if (onSaleComplete) onSaleComplete(deductionCart, { ...saleData, itemCount: cart.length });
     clearCart();
     showNotification('Sale completed! ₹' + total.toFixed(2) + ' — ' + paymentMethod);
   };
@@ -524,46 +564,110 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
           </div>
 
           {/* Last Scanned Item */}
-          {lastScannedItem && (
-            <div className="card">
-              <div className="card-header">
-                <h3 className="card-title">✅ Last Scanned Item</h3>
-              </div>
-              <div className="card-body">
-                <div className="scanned-item">
-                  <div className="scanned-item-icon"><PillIcon size={22} stroke="white" /></div>
-                  <div style={{ flex: 1 }}>
-                    <div className="scanned-item-name">{lastScannedItem.name}</div>
-                    <div className="scanned-item-meta">{lastScannedItem.category} · Barcode: {lastScannedItem.barcode}</div>
-                    <div style={{ fontSize: 11, color: lastScannedItem.stock < 50 ? '#ef4444' : '#0d9488', marginTop: 2, fontWeight: 600 }}>
-                      {lastScannedItem.stock < 50 ? '⚠️' : '✅'} Stock: {lastScannedItem.stock} {lastScannedItem.unit}s
+          {lastScannedItem && (() => {
+            const canSellTablets = lastScannedItem.unit === 'Strip' && lastScannedItem.tabletsPerStrip;
+            const isTabletMode = sellMode === 'tablet' && canSellTablets;
+            const perTabletPrice = canSellTablets ? lastScannedItem.price / lastScannedItem.tabletsPerStrip : lastScannedItem.price;
+            const totalTablets = canSellTablets ? lastScannedItem.quantity * lastScannedItem.tabletsPerStrip : null;
+            const displayPrice = isTabletMode ? perTabletPrice : lastScannedItem.price;
+            const displayUnit = isTabletMode ? 'Tablet' : lastScannedItem.unit;
+
+            return (
+              <div className="card">
+                <div className="card-header">
+                  <h3 className="card-title">✅ Last Scanned Item</h3>
+                </div>
+                <div className="card-body">
+                  <div className="scanned-item">
+                    <div className="scanned-item-icon"><PillIcon size={22} stroke="white" /></div>
+                    <div style={{ flex: 1 }}>
+                      <div className="scanned-item-name">{lastScannedItem.name}</div>
+                      <div className="scanned-item-meta">{lastScannedItem.category} · Barcode: {lastScannedItem.barcode}</div>
+                      <div style={{ fontSize: 11, color: lastScannedItem.stock < 50 ? '#ef4444' : '#0d9488', marginTop: 2, fontWeight: 600 }}>
+                        {lastScannedItem.stock < 50 ? '⚠️' : '✅'} Stock: {lastScannedItem.quantity} {lastScannedItem.unit}s
+                        {canSellTablets && <span style={{ color: '#6366f1', marginLeft: 6 }}>({totalTablets} tablets)</span>}
+                      </div>
+                    </div>
+                    <div className="scanned-item-price">
+                      <div className="price">₹{displayPrice.toFixed(2)}</div>
+                      <div className="stock-info">per {displayUnit}</div>
                     </div>
                   </div>
-                  <div className="scanned-item-price">
-                    <div className="price">₹{lastScannedItem.price.toFixed(2)}</div>
-                    <div className="stock-info">per {lastScannedItem.unit}</div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-                  <div className="form-group" style={{ flex: 1, margin: 0 }}>
-                    <label className="form-label">Quantity</label>
-                    <input
-                      type="number" className="form-input"
-                      value={scannedQty} min="1"
-                      style={{ fontSize: 16, fontWeight: 700 }}
-                      onChange={e => setScannedQty(parseInt(e.target.value) || 1)}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-                    <button className="btn btn-primary" style={{ padding: '10px 20px', fontSize: 14 }} onClick={addScannedToCart}>
-                      Add to Cart
-                    </button>
-                    <button className="btn btn-secondary" style={{ padding: '10px 14px' }} onClick={() => setLastScannedItem(null)}>✕</button>
+
+                  {/* ── Strip / Tablet sell mode toggle ── */}
+                  {canSellTablets && (
+                    <div className="sell-mode-toggle" style={{
+                      display: 'flex', gap: 0, marginTop: 14,
+                      background: 'var(--bg-body)', borderRadius: 10,
+                      border: '1.5px solid var(--border)', overflow: 'hidden',
+                    }}>
+                      <button
+                        onClick={() => { setSellMode('strip'); setScannedQty(1); }}
+                        style={{
+                          flex: 1, padding: '10px 8px', border: 'none', cursor: 'pointer',
+                          fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 600,
+                          transition: 'all .2s',
+                          background: sellMode === 'strip' ? 'linear-gradient(135deg,#0d9488,#0891b2)' : 'transparent',
+                          color: sellMode === 'strip' ? 'white' : 'var(--text-secondary)',
+                          borderRadius: sellMode === 'strip' ? 8 : 0,
+                        }}
+                      >
+                        📦 Sell by Strip
+                        <div style={{ fontSize: 10, fontWeight: 400, marginTop: 2, opacity: 0.85 }}>
+                          ₹{lastScannedItem.price.toFixed(2)} / strip ({lastScannedItem.tabletsPerStrip} tablets)
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => { setSellMode('tablet'); setScannedQty(1); }}
+                        style={{
+                          flex: 1, padding: '10px 8px', border: 'none', cursor: 'pointer',
+                          fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 600,
+                          transition: 'all .2s',
+                          background: sellMode === 'tablet' ? 'linear-gradient(135deg,#7c3aed,#6366f1)' : 'transparent',
+                          color: sellMode === 'tablet' ? 'white' : 'var(--text-secondary)',
+                          borderRadius: sellMode === 'tablet' ? 8 : 0,
+                        }}
+                      >
+                        💊 Sell by Tablet
+                        <div style={{ fontSize: 10, fontWeight: 400, marginTop: 2, opacity: 0.85 }}>
+                          ₹{perTabletPrice.toFixed(2)} / tablet
+                        </div>
+                      </button>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+                    <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                      <label className="form-label">
+                        Quantity {isTabletMode ? '(tablets)' : `(${lastScannedItem.unit}s)`}
+                      </label>
+                      <input
+                        type="number" className="form-input"
+                        value={scannedQty} min="1"
+                        max={isTabletMode ? totalTablets : lastScannedItem.quantity}
+                        style={{ fontSize: 16, fontWeight: 700 }}
+                        onChange={e => setScannedQty(parseInt(e.target.value) || 1)}
+                      />
+                      {isTabletMode && scannedQty > 0 && (
+                        <div style={{ fontSize: 11, color: '#6366f1', marginTop: 4, fontWeight: 500 }}>
+                          = {Math.ceil(scannedQty / lastScannedItem.tabletsPerStrip)} strip{Math.ceil(scannedQty / lastScannedItem.tabletsPerStrip) !== 1 ? 's' : ''}
+                          {scannedQty % lastScannedItem.tabletsPerStrip !== 0 && (
+                            <span style={{ color: '#f59e0b' }}> (partial strip — {scannedQty % lastScannedItem.tabletsPerStrip} of {lastScannedItem.tabletsPerStrip} tablets used)</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                      <button className="btn btn-primary" style={{ padding: '10px 20px', fontSize: 14 }} onClick={addScannedToCart}>
+                        Add to Cart
+                      </button>
+                      <button className="btn btn-secondary" style={{ padding: '10px 14px' }} onClick={() => setLastScannedItem(null)}>✕</button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Today's Sales */}
           <div className="card">
@@ -625,51 +729,66 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
                   </div>
                 )}
                 <div className="cart-items">
-                  {cart.map((item, idx) => (
-                    <div key={idx} className="cart-item">
-                      <div style={{ flex: 1 }}>
-                        <div className="cart-item-name">
-                          {item.name}
-                          {govtScheme && (
-                            <span style={{ marginLeft: 6, fontSize: 10, background: '#059669', color: 'white', padding: '1px 6px', borderRadius: 10, fontWeight: 700, verticalAlign: 'middle' }}>
-                              {govtScheme}
-                            </span>
-                          )}
-                          {item.expiry && (
-                            <span style={{ marginLeft: 6, fontSize: 10, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: 10, fontWeight: 600, verticalAlign: 'middle' }}>
-                              exp {fmtExpiry(item.expiry)}
-                            </span>
-                          )}
+                  {cart.map((item, idx) => {
+                    const unitPrice = getItemUnitPrice(item);
+                    const isTablet = item.sellMode === 'tablet' && item.tabletsPerStrip;
+                    const unitLabel = isTablet ? 'tablet' : item.unit;
+                    return (
+                      <div key={idx} className="cart-item">
+                        <div style={{ flex: 1 }}>
+                          <div className="cart-item-name">
+                            {item.name}
+                            {isTablet && (
+                              <span style={{ marginLeft: 6, fontSize: 10, background: 'linear-gradient(135deg,#7c3aed,#6366f1)', color: 'white', padding: '1px 7px', borderRadius: 10, fontWeight: 700, verticalAlign: 'middle' }}>
+                                💊 per tablet
+                              </span>
+                            )}
+                            {govtScheme && (
+                              <span style={{ marginLeft: 6, fontSize: 10, background: '#059669', color: 'white', padding: '1px 6px', borderRadius: 10, fontWeight: 700, verticalAlign: 'middle' }}>
+                                {govtScheme}
+                              </span>
+                            )}
+                            {item.expiry && (
+                              <span style={{ marginLeft: 6, fontSize: 10, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: 10, fontWeight: 600, verticalAlign: 'middle' }}>
+                                exp {fmtExpiry(item.expiry)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="cart-item-sub">
+                            {govtScheme ? (
+                              <>
+                                <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', marginRight: 4 }}>₹{unitPrice.toFixed(2)}</span>
+                                <span style={{ color: '#059669', fontWeight: 700 }}>₹{(unitPrice * 0.20).toFixed(2)}</span>
+                                <span style={{ color: 'var(--text-muted)' }}> / {unitLabel}</span>
+                              </>
+                            ) : (
+                              <>₹{unitPrice.toFixed(2)} / {unitLabel}</>
+                            )}
+                            {isTablet && (
+                              <span style={{ marginLeft: 6, fontSize: 10, color: '#6366f1', fontWeight: 500 }}>
+                                (strip ₹{item.price.toFixed(2)} ÷ {item.tabletsPerStrip})
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="cart-item-sub">
+                        <div className="qty-control">
+                          <button className="qty-btn" onClick={() => changeQty(idx, -1)}>−</button>
+                          <span className="qty-val">{item.qty}</span>
+                          <button className="qty-btn" onClick={() => changeQty(idx, 1)}>+</button>
+                        </div>
+                        <div className="cart-item-price">
                           {govtScheme ? (
-                            <>
-                              <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', marginRight: 4 }}>₹{item.price.toFixed(2)}</span>
-                              <span style={{ color: '#059669', fontWeight: 700 }}>₹{(item.price * 0.20).toFixed(2)}</span>
-                              <span style={{ color: 'var(--text-muted)' }}> / {item.unit}</span>
-                            </>
+                            <span style={{ color: '#059669', fontWeight: 700 }}>₹{(unitPrice * item.qty * 0.20).toFixed(2)}</span>
                           ) : (
-                            <>₹{item.price.toFixed(2)} / {item.unit}</>
+                            <>₹{(unitPrice * item.qty).toFixed(2)}</>
                           )}
                         </div>
+                        <button className="cart-item-remove" onClick={() => removeFromCart(idx)}>
+                          <TrashIcon size={14} />
+                        </button>
                       </div>
-                      <div className="qty-control">
-                        <button className="qty-btn" onClick={() => changeQty(idx, -1)}>−</button>
-                        <span className="qty-val">{item.qty}</span>
-                        <button className="qty-btn" onClick={() => changeQty(idx, 1)}>+</button>
-                      </div>
-                      <div className="cart-item-price">
-                        {govtScheme ? (
-                          <span style={{ color: '#059669', fontWeight: 700 }}>₹{(item.price * item.qty * 0.20).toFixed(2)}</span>
-                        ) : (
-                          <>₹{(item.price * item.qty).toFixed(2)}</>
-                        )}
-                      </div>
-                      <button className="cart-item-remove" onClick={() => removeFromCart(idx)}>
-                        <TrashIcon size={14} />
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div className="cart-totals">
                   {/* Government Scheme Selector */}
@@ -719,7 +838,7 @@ export default function SellPage({ medicineDB, onNavigate, showNotification, onS
                         style={{ width: 50, padding: '2px 6px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12, textAlign: 'center' }}
                         onChange={e => setDiscount(e.target.value)}
                       />
-                       %
+                      %
                     </span>
                   </div>
                   {(parseFloat(discount) > 0) && (
