@@ -18,7 +18,7 @@ body{font-family:'Segoe UI',sans-serif;margin:0;padding:24px;color:#1e293b;}
     // Wait for full load before triggering print dialog
     w.onload = () => { w.focus(); w.print(); };
     // Fallback: some browsers fire onload before write() completes
-    setTimeout(() => { try { if (!w.closed) { w.focus(); w.print(); } } catch {} }, 800);
+    setTimeout(() => { try { if (!w.closed) { w.focus(); w.print(); } } catch { } }, 800);
     return;
   }
 
@@ -58,7 +58,12 @@ export default function ReceiptModal({ isOpen, onClose, data }) {
   <div class="receipt-row"><span>Patient</span><span>${patient}</span></div>
   <div class="receipt-row"><span>Payment</span><span>${payment}</span></div>
   <div style="border-top:1px dashed #e2e8f0;margin:10px 0;padding-top:10px;">
-    ${items.map(i => `<div class="receipt-row"><span>${i.name} × ${i.qty}${govtScheme ? ` <span style="font-size:10px;background:#059669;color:white;padding:1px 5px;border-radius:6px;">${govtScheme}</span>` : ''}</span><span>₹${govtScheme ? (i.price * i.qty * 0.20).toFixed(2) : (i.price * i.qty).toFixed(2)}</span></div>`).join('')}
+    ${items.map(i => {
+    const isTablet = i.sellMode === 'tablet' && i.tabletsPerStrip;
+    const uPrice = isTablet ? i.price / i.tabletsPerStrip : i.price;
+    const lineTotal = uPrice * i.qty;
+    return `<div class="receipt-row"><span>${i.name} × ${i.qty}${isTablet ? ' <span style="font-size:10px;background:#6366f1;color:white;padding:1px 5px;border-radius:6px;">tablet</span>' : ''}${govtScheme ? ` <span style="font-size:10px;background:#059669;color:white;padding:1px 5px;border-radius:6px;">${govtScheme}</span>` : ''}</span><span>₹${govtScheme ? (lineTotal * 0.20).toFixed(2) : lineTotal.toFixed(2)}</span></div>`;
+  }).join('')}
   </div>
   <div class="receipt-row" style="border-top:1px dashed #e2e8f0;padding-top:10px;"><span>Subtotal</span><span>₹${subtotal.toFixed(2)}</span></div>
   <div class="receipt-row"><span>GST (18%)</span><span>₹${gst.toFixed(2)}</span></div>
